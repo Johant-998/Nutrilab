@@ -476,14 +476,82 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Fondo barra lateral */
     [data-testid="stSidebar"] { background-color: #1a2535; }
-    [data-testid="stSidebar"] * { color: #e6edf3 !important; }
-    .stButton > button {
-        background-color: #2ecc71; color: white;
-        border-radius: 8px; border: none;
-        font-weight: 600; padding: 8px 24px;
+
+    /* Textos generales sidebar */
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] div { color: #e6edf3 !important; }
+
+    /* Inputs de texto y numero */
+    [data-testid="stSidebar"] input[type="text"],
+    [data-testid="stSidebar"] input[type="number"] {
+        background-color: #2c3e50 !important;
+        color: #ffffff !important;
+        border: 1px solid #4a6278 !important;
+        border-radius: 6px !important;
+        caret-color: #2ecc71 !important;
     }
-    .stButton > button:hover { background-color: #27ae60; }
+
+    /* Placeholder */
+    [data-testid="stSidebar"] input::placeholder {
+        color: #8fa8bf !important;
+        opacity: 1 !important;
+    }
+
+    /* Number input contenedor */
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] input {
+        background-color: #2c3e50 !important;
+        color: #ffffff !important;
+        border: 1px solid #4a6278 !important;
+    }
+
+    /* Flechas number input */
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] button {
+        background-color: #34495e !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stNumberInput"] button:hover {
+        background-color: #2ecc71 !important;
+    }
+
+    /* File uploader */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] {
+        background-color: #2c3e50 !important;
+        border: 1.5px dashed #4a6278 !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] * {
+        color: #e6edf3 !important;
+    }
+
+    /* Radio buttons */
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {
+        color: #e6edf3 !important;
+    }
+
+    /* Info / warning boxes sidebar */
+    [data-testid="stSidebar"] [data-testid="stAlert"] {
+        background-color: #1e3a52 !important;
+        color: #e6edf3 !important;
+        border: 1px solid #2e5f82 !important;
+    }
+
+    /* Boton principal */
+    .stButton > button {
+        background-color: #2ecc71 !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        padding: 8px 24px !important;
+    }
+    .stButton > button:hover { background-color: #27ae60 !important; }
+
+    /* Alertas area principal */
     .alerta-rojo     { background:#fdecea; border-left:4px solid #e74c3c;
                        padding:8px 12px; border-radius:6px; margin:4px 0; }
     .alerta-amarillo { background:#fef9e7; border-left:4px solid #f39c12;
