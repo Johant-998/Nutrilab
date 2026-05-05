@@ -504,108 +504,192 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Fondo barra lateral */
-    [data-testid="stSidebar"] { background-color: #1a2535; }
-
-    /* Textos generales sidebar */
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] div { color: #e6edf3 !important; }
-
-    /* Inputs de texto y numero */
-    [data-testid="stSidebar"] input[type="text"],
-    [data-testid="stSidebar"] input[type="number"] {
-        background-color: #2c3e50 !important;
-        color: #ffffff !important;
-        border: 1px solid #4a6278 !important;
-        border-radius: 6px !important;
-        caret-color: #2ecc71 !important;
+    /* ── Sidebar base ── */
+    [data-testid="stSidebar"] {
+        background-color: #1a2535 !important;
     }
 
-    /* Placeholder */
-    [data-testid="stSidebar"] input::placeholder {
+    /* ── Todos los textos de la sidebar ── */
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span:not(.st-emotion-cache-x78sv8),
+    [data-testid="stSidebar"] div:not([data-baseweb]),
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        color: #e6edf3 !important;
+    }
+
+    /* ── Pestanas (tabs) dentro de sidebar ── */
+    [data-testid="stSidebar"] [data-baseweb="tab-list"] {
+        background-color: #0f1923 !important;
+        border-radius: 8px !important;
+        padding: 3px !important;
+        gap: 3px !important;
+    }
+    [data-testid="stSidebar"] [data-baseweb="tab"] {
+        background-color: transparent !important;
         color: #8fa8bf !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        padding: 6px 12px !important;
+        border: none !important;
+    }
+    [data-testid="stSidebar"] [aria-selected="true"] {
+        background-color: #2ecc71 !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stSidebar"] [data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+    [data-testid="stSidebar"] [data-baseweb="tab-border"] {
+        display: none !important;
+    }
+
+    /* ── Inputs de texto ── */
+    [data-testid="stSidebar"] input[type="text"],
+    [data-testid="stSidebar"] input[type="number"] {
+        background-color: #243447 !important;
+        color: #ffffff !important;
+        border: 1.5px solid #3d5a73 !important;
+        border-radius: 8px !important;
+        caret-color: #2ecc71 !important;
+        padding: 6px 10px !important;
+    }
+    [data-testid="stSidebar"] input[type="text"]:focus,
+    [data-testid="stSidebar"] input[type="number"]:focus {
+        border-color: #2ecc71 !important;
+        box-shadow: 0 0 0 2px rgba(46,204,113,0.2) !important;
+    }
+
+    /* ── Placeholder ── */
+    [data-testid="stSidebar"] input::placeholder {
+        color: #6b8ba4 !important;
         opacity: 1 !important;
     }
 
-    /* Number input contenedor */
-    [data-testid="stSidebar"] [data-testid="stNumberInput"] input {
-        background-color: #2c3e50 !important;
-        color: #ffffff !important;
-        border: 1px solid #4a6278 !important;
-    }
-
-    /* Flechas number input */
+    /* ── Flechas del number input ── */
     [data-testid="stSidebar"] [data-testid="stNumberInput"] button {
-        background-color: #34495e !important;
-        color: #ffffff !important;
+        background-color: #2c4159 !important;
+        color: #e6edf3 !important;
         border: none !important;
+        border-radius: 4px !important;
     }
     [data-testid="stSidebar"] [data-testid="stNumberInput"] button:hover {
         background-color: #2ecc71 !important;
+        color: #fff !important;
     }
 
-    /* File uploader */
+    /* ── Zona de carga de imagen (file uploader) ── */
     [data-testid="stSidebar"] [data-testid="stFileUploader"] {
-        background-color: #2c3e50 !important;
-        border: 1.5px dashed #4a6278 !important;
-        border-radius: 8px !important;
+        background-color: #162030 !important;
+        border: 2px dashed #3d5a73 !important;
+        border-radius: 12px !important;
+        padding: 8px !important;
+        transition: border-color 0.2s !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"]:hover {
+        border-color: #2ecc71 !important;
     }
     [data-testid="stSidebar"] [data-testid="stFileUploader"] * {
-        color: #e6edf3 !important;
+        color: #a8c4d8 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] {
+        color: #8fa8bf !important;
     }
 
-    /* Radio buttons */
-    [data-testid="stSidebar"] [data-testid="stRadio"] label {
-        color: #e6edf3 !important;
-    }
-
-    /* Info / warning boxes sidebar */
-    [data-testid="stSidebar"] [data-testid="stAlert"] {
-        background-color: #1e3a52 !important;
-        color: #e6edf3 !important;
-        border: 1px solid #2e5f82 !important;
-    }
-
-    /* Boton principal */
-    .stButton > button {
-        background-color: #2ecc71 !important;
-        color: white !important;
-        border-radius: 8px !important;
-        border: none !important;
+    /* ── Boton Browse files del uploader ── */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button {
+        background-color: #243447 !important;
+        color: #2ecc71 !important;
+        border: 1.5px solid #2ecc71 !important;
+        border-radius: 6px !important;
         font-weight: 600 !important;
-        padding: 8px 24px !important;
     }
-    .stButton > button:hover { background-color: #27ae60 !important; }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button:hover {
+        background-color: #2ecc71 !important;
+        color: #fff !important;
+    }
 
-    /* Alertas area principal */
+    /* ── Previa de imagen subida ── */
+    [data-testid="stSidebar"] img {
+        border-radius: 10px !important;
+        border: 2px solid #3d5a73 !important;
+        margin-top: 8px !important;
+    }
+
+    /* ── Cajas info/warning/error en sidebar ── */
+    [data-testid="stSidebar"] [data-testid="stAlert"] {
+        background-color: #1a2f45 !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stAlert"] * {
+        color: #c8dcea !important;
+    }
+
+    /* ── Divider sidebar ── */
+    [data-testid="stSidebar"] hr {
+        border-color: #243447 !important;
+        margin: 8px 0 !important;
+    }
+
+    /* ── Boton principal Analizar ── */
+    [data-testid="stSidebar"] .stButton > button {
+        background: linear-gradient(135deg, #2ecc71, #27ae60) !important;
+        color: white !important;
+        border-radius: 10px !important;
+        border: none !important;
+        font-weight: 700 !important;
+        font-size: 0.95rem !important;
+        padding: 10px 24px !important;
+        width: 100% !important;
+        margin-top: 8px !important;
+        box-shadow: 0 4px 12px rgba(46,204,113,0.3) !important;
+        transition: all 0.2s !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 16px rgba(46,204,113,0.4) !important;
+    }
+
+    /* ── Alertas en area principal ── */
     .alerta-rojo     { background:#fdecea; border-left:4px solid #e74c3c;
-                       padding:8px 12px; border-radius:6px; margin:4px 0; }
+                       padding:10px 14px; border-radius:8px; margin:4px 0;
+                       font-size:0.9rem; }
     .alerta-amarillo { background:#fef9e7; border-left:4px solid #f39c12;
-                       padding:8px 12px; border-radius:6px; margin:4px 0; }
+                       padding:10px 14px; border-radius:8px; margin:4px 0;
+                       font-size:0.9rem; }
     .alerta-verde    { background:#eafaf1; border-left:4px solid #2ecc71;
-                       padding:8px 12px; border-radius:6px; margin:4px 0; }
+                       padding:10px 14px; border-radius:8px; margin:4px 0;
+                       font-size:0.9rem; }
+
+    /* ── Ocultar borde inferior de tabs en sidebar ── */
+    [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
+        padding-top: 12px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## Analizador Nutricional")
-    st.markdown("*Resolucion 810/2021 - Min. Salud Colombia*")
+    st.markdown("## 🥗 NutriLab")
+    st.markdown("*Res. 810/2021 · Min. Salud Colombia*")
     st.divider()
 
-    modo = st.radio("Modo de ingreso", ["Manual", "Foto (OCR)"])
-    st.divider()
+    # Pestanas: Manual / Foto OCR
+    tab_manual, tab_ocr = st.tabs(["✏️  Manual", "📷  Foto OCR"])
 
-    if modo == "Manual":
-        st.markdown("### Datos del producto")
-        nombre  = st.text_input("Nombre del producto",
-                                placeholder="Ej: Avena Quaker Tradicional")
-        porcion = st.number_input("Porcion (g o ml)",
-                                  min_value=0.0, max_value=2000.0,
-                                  value=30.0, step=1.0)
-        st.markdown("### Informacion nutricional")
+    # ── PESTAÑA MANUAL ────────────────────────────────────────────────────────
+    with tab_manual:
+        st.markdown("**Producto**")
+        nombre  = st.text_input("Nombre", placeholder="Ej: Avena Quaker",
+                                label_visibility="collapsed",
+                                key="nombre_manual")
+        porcion = st.number_input("Porcion (g/ml)", 0.0, 2000.0, 30.0, 1.0,
+                                  key="porcion_manual")
+
+        st.markdown("**Valores nutricionales**")
         calorias         = st.number_input("Calorias (kcal)",      0.0, 2000.0, 0.0, 1.0)
         grasas_totales   = st.number_input("Grasas totales (g)",   0.0,  200.0, 0.0, 0.1)
         grasas_saturadas = st.number_input("Grasas saturadas (g)", 0.0,  100.0, 0.0, 0.1)
@@ -615,8 +699,9 @@ with st.sidebar:
         proteinas        = st.number_input("Proteinas (g)",        0.0,  100.0, 0.0, 0.1)
         fibra            = st.number_input("Fibra dietaria (g)",   0.0,  100.0, 0.0, 0.1)
 
-        analizar = st.button("Analizar producto", use_container_width=True)
-
+        analizar_manual = st.button("🔍  Analizar producto",
+                                    use_container_width=True,
+                                    key="btn_manual")
         datos_formulario = {
             "nombre_producto":  nombre or "Producto sin nombre",
             "porcion_g":        porcion,
@@ -629,34 +714,68 @@ with st.sidebar:
             "proteinas":        proteinas,
             "fibra":            fibra,
         }
+        modo    = "Manual"
+        analizar = analizar_manual
 
-    else:
-        st.markdown("### Subir foto de etiqueta")
+    # ── PESTAÑA OCR ───────────────────────────────────────────────────────────
+    with tab_ocr:
         if not OCR_DISPONIBLE:
             st.error(
-                "**OCR no disponible**\n\n"
-                f"Causa: `{OCR_ERROR}`\n\n"
-                "**Solucion:** Asegurese de que su repositorio tenga un archivo "
-                "`packages.txt` en la raiz con:\n"
-                "```\ntesseract-ocr\ntesseract-ocr-spa\n```\n"
-                "Luego haga **Reboot app** en Streamlit Cloud."
+                f"**OCR no disponible**\n\nCausa: `{OCR_ERROR}`"
             )
         else:
-            st.info("Foto frontal, buena iluminacion, sin reflejos.")
+            # Instrucciones compactas
+            st.markdown("""
+<div style='background:#162030;border-radius:10px;padding:10px 12px;
+            border:1px solid #3d5a73;margin-bottom:10px;font-size:0.8rem;
+            color:#a8c4d8;line-height:1.6'>
+📸 <b style="color:#2ecc71">Consejos para mejor lectura</b><br>
+• Foto frontal, sin inclinación<br>
+• Buena iluminación, sin reflejos<br>
+• Imagen nítida y de alta resolución
+</div>
+""", unsafe_allow_html=True)
 
-        archivo    = st.file_uploader("Seleccione la imagen",
-                                      type=["jpg", "jpeg", "png", "bmp", "webp"])
-        nombre_ocr = st.text_input("Nombre del producto",
-                                   placeholder="Escriba manualmente")
+            nombre_ocr = st.text_input("Nombre del producto",
+                                       placeholder="Escriba manualmente",
+                                       key="nombre_ocr")
 
-        analizar         = st.button("Escanear y analizar",
-                                     use_container_width=True,
-                                     disabled=not OCR_DISPONIBLE)
-        datos_formulario = {"nombre_producto": nombre_ocr or "Producto escaneado"}
+            archivo = st.file_uploader(
+                "Arrastra o selecciona la foto",
+                type=["jpg", "jpeg", "png", "bmp", "webp"],
+                help="Formatos soportados: JPG, PNG, BMP, WEBP",
+                key="file_ocr",
+            )
 
-        if archivo:
-            datos_formulario["_imagen_bytes"] = archivo.read()
-            st.image(archivo, caption="Imagen cargada", use_container_width=True)
+            if archivo:
+                # Previsualización con overlay de estado
+                st.image(archivo, caption="✅ Imagen lista para escanear",
+                         use_container_width=True)
+
+            analizar_ocr = st.button(
+                "📷  Escanear etiqueta",
+                use_container_width=True,
+                disabled=(not OCR_DISPONIBLE or archivo is None),
+                key="btn_ocr",
+            )
+
+            datos_formulario_ocr = {
+                "nombre_producto": nombre_ocr or "Producto escaneado"
+            }
+            if archivo:
+                datos_formulario_ocr["_imagen_bytes"] = archivo.read()
+
+            if analizar_ocr:
+                modo             = "Foto (OCR)"
+                analizar         = True
+                datos_formulario = datos_formulario_ocr
+            else:
+                modo    = "Foto (OCR)"
+                analizar = False
+                if not analizar_manual:
+                    datos_formulario = datos_formulario_ocr
+
+
 
 
 # ─── Area principal ───────────────────────────────────────────────────────────
@@ -721,19 +840,31 @@ with st.spinner("Analizando nutrientes..."):
     else:
         imagen_bytes = datos_formulario.get("_imagen_bytes")
         if not imagen_bytes:
-            st.error("Suba una imagen de la etiqueta nutricional.")
+            st.error("Suba una imagen de la etiqueta antes de escanear.")
             st.stop()
         try:
-            datos_ocr, texto_crudo = _ocr_procesar_imagen(imagen_bytes)
-            datos_ocr["nombre_producto"] = datos_formulario["nombre_producto"]
-            campos_ok = len([k for k in datos_ocr if k != "nombre_producto"])
-            confianza = round((campos_ok / 8) * 100)
-            st.info(f"Campos detectados: **{campos_ok} / 8** (confianza: {confianza}%)")
-            with st.expander("Ver texto crudo del OCR"):
-                st.code(texto_crudo, language=None)
+            with st.status("Procesando imagen...", expanded=True) as status:
+                st.write("Preprocesando imagen con OpenCV...")
+                datos_ocr, texto_crudo = _ocr_procesar_imagen(imagen_bytes)
+                datos_ocr["nombre_producto"] = datos_formulario["nombre_producto"]
+                campos_ok = len([k for k in datos_ocr if k != "nombre_producto"])
+                confianza = round((campos_ok / 8) * 100)
+                st.write(f"Campos detectados: {campos_ok} / 8 (confianza: {confianza}%)")
+                status.update(label=f"Escaneo completado — confianza {confianza}%",
+                              state="complete")
+
+            if confianza < 50:
+                st.warning(
+                    f"Confianza baja ({confianza}%). "
+                    "Intente con una foto mas nitida y bien iluminada."
+                )
+
+            with st.expander("Ver texto crudo detectado por el OCR"):
+                st.code(texto_crudo or "(sin texto detectado)", language=None)
+
             resultado = analizar_nutrientes(datos_ocr)
         except Exception as e:
-            st.error(f"Error OCR: {e}")
+            st.error(f"Error durante el escaneo: {e}")
             st.stop()
 
 
