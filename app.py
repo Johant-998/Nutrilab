@@ -23,14 +23,42 @@ import numpy as np
 import streamlit as st
 from fpdf import FPDF
 
-# Importación condicional de OCR
+# Importacion condicional de OCR
+# Se busca tesseract en las rutas mas comunes de Linux/Mac/Windows
+_TESSERACT_PATHS = [
+    '/usr/bin/tesseract',
+    '/usr/local/bin/tesseract',
+    '/opt/homebrew/bin/tesseract',
+    r'C:/Program Files/Tesseract-OCR/tesseract.exe',
+]
+
+OCR_DISPONIBLE = False
+OCR_ERROR      = ""
+
 try:
     import cv2
     import pytesseract
     from PIL import Image as PILImage
+    import shutil
+
+    # Configurar ruta de tesseract explicitamente
+    ruta_auto = shutil.which("tesseract")
+    if ruta_auto:
+        pytesseract.pytesseract.tesseract_cmd = ruta_auto
+    else:
+        for ruta in _TESSERACT_PATHS:
+            if os.path.exists(ruta):
+                pytesseract.pytesseract.tesseract_cmd = ruta
+                break
+
+    # Verificar que tesseract responde correctamente
+    pytesseract.get_tesseract_version()
     OCR_DISPONIBLE = True
-except ImportError:
-    OCR_DISPONIBLE = False
+
+except ImportError as e:
+    OCR_ERROR = f"Libreria faltante: {e}"
+except Exception as e:
+    OCR_ERROR = str(e)
 
 
 # =============================================================================
@@ -605,9 +633,13 @@ with st.sidebar:
     else:
         st.markdown("### Subir foto de etiqueta")
         if not OCR_DISPONIBLE:
-            st.warning(
-                "OCR no disponible. Cree un archivo `packages.txt` en el "
-                "repositorio con:\n```\ntesseract-ocr\ntesseract-ocr-spa\n```"
+            st.error(
+                "**OCR no disponible**\n\n"
+                f"Causa: `{OCR_ERROR}`\n\n"
+                "**Solucion:** Asegurese de que su repositorio tenga un archivo "
+                "`packages.txt` en la raiz con:\n"
+                "```\ntesseract-ocr\ntesseract-ocr-spa\n```\n"
+                "Luego haga **Reboot app** en Streamlit Cloud."
             )
         else:
             st.info("Foto frontal, buena iluminacion, sin reflejos.")
@@ -630,6 +662,30 @@ with st.sidebar:
 # ─── Area principal ───────────────────────────────────────────────────────────
 st.markdown("# NutriLab")
 st.markdown("**Analizador de Etiquetas Nutricionales** - Resolucion 810/2021 - Min. Salud Colombia")
+
+# Panel de diagnostico OCR (visible solo cuando falla)
+if not OCR_DISPONIBLE:
+    with st.expander("Diagnostico OCR - ver detalles", expanded=False):
+        import shutil, subprocess
+        st.markdown("**Estado del sistema:**")
+        tess_path = shutil.which("tesseract")
+        st.code(f"tesseract en PATH: {tess_path or 'NO ENCONTRADO'}")
+        st.code(f"Error detectado: {OCR_ERROR}")
+        st.markdown("**Rutas verificadas:**")
+        rutas = ['/usr/bin/tesseract', '/usr/local/bin/tesseract',
+                 '/opt/homebrew/bin/tesseract']
+        for r in rutas:
+            import os as _os
+            existe = _os.path.exists(r)
+            st.code(f"{'EXISTE' if existe else 'NO existe'}: {r}")
+        st.markdown("**Solucion:**")
+        st.info(
+            "1. Cree el archivo `packages.txt` en la raiz de su repositorio GitHub\n"
+            "2. Contenido:\n```\ntesseract-ocr\ntesseract-ocr-spa\n```\n"
+            "3. Haga commit y push\n"
+            "4. En Streamlit Cloud: **Manage app > Reboot app**"
+        )
+
 st.divider()
 
 if not analizar:
