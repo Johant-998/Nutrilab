@@ -609,46 +609,52 @@ def db_buscar_producto(codigo: str) -> dict | None:
         return None
 
 
-def db_guardar_producto(datos: dict, codigo: str, contribuidor: str = "anonimo") -> bool:
+def db_guardar_producto(datos: dict, codigo: str, contribuidor: str = "anonimo"):
     """
     Guarda o actualiza un producto en la base de datos NutriLab.
     Si el codigo ya existe, actualiza los nutrientes (upsert).
 
-    Parametros:
-        datos (dict):        Datos nutricionales del producto.
-        codigo (str):        Codigo de barras EAN/UPC.
-        contribuidor (str):  Nombre o alias del usuario que contribuye.
-
     Retorna:
-        bool: True si se guardo correctamente, False si hubo error.
+        (True, "") si exitoso, o (False, mensaje_error) si fallo.
     """
     if not SUPABASE_DISPONIBLE or not _sb_client:
-        return False
+        return False, "Supabase no disponible"
     try:
         registro = {
-            "codigo_barras":    codigo,
-            "nombre_producto":  datos.get("nombre_producto", "Producto sin nombre"),
-            "marca":            datos.get("_marca", ""),
-            "pais":             datos.get("_pais", "Colombia"),
-            "porcion_g":        datos.get("porcion_g"),
-            "contribuidor":     contribuidor,
-            "actualizado_en":   datetime.utcnow().isoformat(),
+            "codigo_barras":   codigo,
+            "nombre_producto": datos.get("nombre_producto", "Producto sin nombre"),
+            "marca":           datos.get("_marca", "") or "",
+            "pais":            datos.get("_pais", "Colombia") or "Colombia",
+            "contribuidor":    contribuidor or "anonimo",
+            "actualizado_en":  datetime.utcnow().isoformat(),
         }
-        # Agregar solo los nutrientes que tienen valor
+
+        # Porcion — solo agregar si tiene valor
+        if datos.get("porcion_g"):
+            registro["porcion_g"] = float(datos["porcion_g"])
+
+        # Nutrientes — solo los que tienen valor mayor a cero
         for campo in CAMPOS_NUTRIENTES:
             val = datos.get(campo)
-            if val is not None:
-                registro[campo] = float(val)
+            if val is not None and val != "":
+                try:
+                    registro[campo] = float(val)
+                except (ValueError, TypeError):
+                    pass
 
-        # Upsert: inserta si no existe, actualiza si ya existe
-        _sb_client.table("productos").upsert(
+        resp = _sb_client.table("productos").upsert(
             registro,
             on_conflict="codigo_barras"
         ).execute()
-        return True
+
+        # Verificar que Supabase retorno datos (confirmacion de exito)
+        if resp.data:
+            return True, ""
+        else:
+            return False, "Supabase no retorno confirmacion — verifique RLS"
 
     except Exception as e:
-        return False
+        return False, str(e)
 
 
 def db_estadisticas() -> dict:
@@ -1296,18 +1302,28 @@ with st.spinner("Analizando nutrientes..."):
                 # Guardar en Supabase si el usuario lo autorizó
                 if guardar_bd and SUPABASE_DISPONIBLE:
                     datos_para_guardar = {**datos_bc, **datos_limpios}
-                    exito = db_guardar_producto(
+                    exito, error_msg = db_guardar_producto(
                         datos_para_guardar,
                         codigo,
                         contribuidor.strip() or "anonimo"
                     )
                     if exito:
                         st.success(
-                            f"Gracias por contribuir al banco de datos NutriLab. "
-                            f"Este producto ya estara disponible para otros usuarios."
+                            "Gracias por contribuir al banco de datos NutriLab. "
+                            "Este producto ya estara disponible para otros usuarios."
                         )
+                        st.balloons()
                     else:
-                        st.warning("No se pudo guardar en la base de datos.")
+                        st.error(f"No se pudo guardar: {error_msg}")
+                        # Si es error de RLS mostrar instruccion especifica
+                        if "RLS" in error_msg or "policy" in error_msg.lower() or "permission" in error_msg.lower():
+                            st.info(
+                                "Error de permisos en Supabase. "
+                                "Ejecute en el SQL Editor de Supabase:\n"
+                                "```sql\n"
+                                "ALTER TABLE productos DISABLE ROW LEVEL SECURITY;\n"
+                                "```"
+                            )
 
             resultado = analizar_nutrientes(datos_limpios)
 
