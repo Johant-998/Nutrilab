@@ -1082,9 +1082,8 @@ if not analizar:
 # ─── Procesamiento ────────────────────────────────────────────────────────────
 resultado = None
 
-with st.spinner("Analizando nutrientes..."):
-
-    if modo == "Manual":
+if modo == "Manual":
+    with st.spinner("Analizando nutrientes..."):
         campos_principales = ["calorias", "grasas_totales", "sodio",
                               "carbohidratos", "proteinas"]
         vacios = [c for c in campos_principales if datos_formulario.get(c, 0) == 0]
@@ -1094,254 +1093,254 @@ with st.spinner("Analizando nutrientes..."):
             st.stop()
         resultado = analizar_nutrientes(datos_formulario)
 
-    else:
-        imagen_bytes_bc = datos_formulario.get("_imagen_bytes_bc")
-        if not imagen_bytes_bc:
-            st.error("Suba una imagen con el codigo de barras del producto.")
-            st.stop()
-        try:
-            # Usar session_state para persistir datos entre reruns del formulario
-            if "bc_datos" not in st.session_state or st.session_state.get("bc_imagen_nueva"):
+else:
+    imagen_bytes_bc = datos_formulario.get("_imagen_bytes_bc")
+    if not imagen_bytes_bc:
+        st.error("Suba una imagen con el codigo de barras del producto.")
+        st.stop()
+    try:
+        # Usar session_state para persistir datos entre reruns del formulario
+        if "bc_datos" not in st.session_state or st.session_state.get("bc_imagen_nueva"):
 
-                with st.status("Leyendo codigo de barras...", expanded=True) as status:
+            with st.status("Leyendo codigo de barras...", expanded=True) as status:
 
-                    # Paso 1: decodificar
-                    st.write("Detectando codigo de barras en la imagen...")
-                    codigo, tipo_bc = barcode_leer_imagen(imagen_bytes_bc)
-                    st.write(f"Codigo detectado: **{codigo}** ({tipo_bc})")
+                # Paso 1: decodificar
+                st.write("Detectando codigo de barras en la imagen...")
+                codigo, tipo_bc = barcode_leer_imagen(imagen_bytes_bc)
+                st.write(f"Codigo detectado: **{codigo}** ({tipo_bc})")
 
-                    # Paso 2: buscar en NutriLab primero
-                    datos_bc     = None
-                    fuente_datos = ""
+                # Paso 2: buscar en NutriLab primero
+                datos_bc     = None
+                fuente_datos = ""
 
-                    if SUPABASE_DISPONIBLE:
-                        st.write("Buscando en base de datos NutriLab...")
-                        registro_local = db_buscar_producto(codigo)
-                        if registro_local:
-                            datos_bc = {k: registro_local.get(k)
-                                        for k in ["nombre_producto","porcion_g"] + CAMPOS_NUTRIENTES
-                                        if registro_local.get(k) is not None}
-                            datos_bc["_marca"]      = registro_local.get("marca", "")
-                            datos_bc["_pais"]       = registro_local.get("pais", "")
-                            datos_bc["_imagen_url"] = ""
-                            datos_bc["_nutriscore"] = ""
-                            fuente_datos = "nutrilab"
-                            st.write(f"Encontrado en NutriLab: **{datos_bc['nombre_producto']}**")
+                if SUPABASE_DISPONIBLE:
+                    st.write("Buscando en base de datos NutriLab...")
+                    registro_local = db_buscar_producto(codigo)
+                    if registro_local:
+                        datos_bc = {k: registro_local.get(k)
+                                    for k in ["nombre_producto","porcion_g"] + CAMPOS_NUTRIENTES
+                                    if registro_local.get(k) is not None}
+                        datos_bc["_marca"]      = registro_local.get("marca", "")
+                        datos_bc["_pais"]       = registro_local.get("pais", "")
+                        datos_bc["_imagen_url"] = ""
+                        datos_bc["_nutriscore"] = ""
+                        fuente_datos = "nutrilab"
+                        st.write(f"Encontrado en NutriLab: **{datos_bc['nombre_producto']}**")
 
-                    # Paso 3: Open Food Facts si no está en NutriLab
-                    if datos_bc is None:
-                        st.write("Consultando Open Food Facts...")
-                        try:
-                            datos_bc     = barcode_consultar_api(codigo)
-                            fuente_datos = "openfoodfacts"
-                        except ValueError:
-                            datos_bc = {
-                                "nombre_producto": f"Producto {codigo}",
-                                "_marca": "", "_pais": "Colombia",
-                                "_imagen_url": "", "_nutriscore": "",
-                            }
-                            fuente_datos = "nuevo"
+                # Paso 3: Open Food Facts si no está en NutriLab
+                if datos_bc is None:
+                    st.write("Consultando Open Food Facts...")
+                    try:
+                        datos_bc     = barcode_consultar_api(codigo)
+                        fuente_datos = "openfoodfacts"
+                    except ValueError:
+                        datos_bc = {
+                            "nombre_producto": f"Producto {codigo}",
+                            "_marca": "", "_pais": "Colombia",
+                            "_imagen_url": "", "_nutriscore": "",
+                        }
+                        fuente_datos = "nuevo"
 
-                    nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
-                    marca_encontrada  = datos_bc.get("_marca", "")
-                    nutriscore        = datos_bc.get("_nutriscore", "")
-                    imagen_url        = datos_bc.get("_imagen_url", "")
-
-                    status.update(
-                        label=f"Producto encontrado: {nombre_encontrado}",
-                        state="complete"
-                    )
-
-                # Guardar en session_state para no re-escanear en cada rerun
-                st.session_state["bc_datos"]        = datos_bc
-                st.session_state["bc_codigo"]       = codigo
-                st.session_state["bc_fuente"]       = fuente_datos
-                st.session_state["bc_imagen_nueva"] = False
-
-            else:
-                # Recuperar datos del session_state
-                datos_bc          = st.session_state["bc_datos"]
-                codigo            = st.session_state["bc_codigo"]
-                fuente_datos      = st.session_state["bc_fuente"]
                 nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
                 marca_encontrada  = datos_bc.get("_marca", "")
                 nutriscore        = datos_bc.get("_nutriscore", "")
                 imagen_url        = datos_bc.get("_imagen_url", "")
 
-            # Mostrar tarjeta del producto encontrado
-            col_img, col_info = st.columns([1, 2])
-            with col_img:
-                if imagen_url:
-                    st.image(imagen_url, width=120)
-                else:
-                    st.markdown(
-                        "<div style='background:#1a2535;border-radius:10px;"
-                        "height:80px;display:flex;align-items:center;"
-                        "justify-content:center;font-size:2rem'>📦</div>",
-                        unsafe_allow_html=True
-                    )
-            with col_info:
-                st.markdown(f"**{nombre_encontrado}**")
-                if marca_encontrada:
-                    st.caption(f"Marca: {marca_encontrada}")
-
-                # Badge de fuente de datos
-                if fuente_datos == "nutrilab":
-                    st.markdown(
-                        "<span style='background:#2ecc71;color:white;padding:2px 10px;"
-                        "border-radius:6px;font-size:0.75rem;font-weight:700'>"
-                        "NutriLab DB</span>",
-                        unsafe_allow_html=True
-                    )
-                elif fuente_datos == "openfoodfacts":
-                    st.markdown(
-                        "<span style='background:#3498db;color:white;padding:2px 10px;"
-                        "border-radius:6px;font-size:0.75rem;font-weight:700'>"
-                        "Open Food Facts</span>",
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.markdown(
-                        "<span style='background:#e67e22;color:white;padding:2px 10px;"
-                        "border-radius:6px;font-size:0.75rem;font-weight:700'>"
-                        "Nuevo producto</span>",
-                        unsafe_allow_html=True
-                    )
-
-                if nutriscore:
-                    colores_ns = {"A":"#2ecc71","B":"#82c341","C":"#f9c74f",
-                                  "D":"#f39c12","E":"#e74c3c"}
-                    color_ns = colores_ns.get(nutriscore, "#888")
-                    st.markdown(
-                        f"<span style='background:{color_ns};color:white;"
-                        f"padding:2px 10px;border-radius:6px;font-weight:700;"
-                        f"font-size:0.85rem'>Nutri-Score {nutriscore}</span>",
-                        unsafe_allow_html=True
-                    )
-                st.caption(f"Codigo: {codigo}")
-
-            # Limpiar metadata antes de analizar
-            datos_limpios = {k: v for k, v in datos_bc.items()
-                             if not k.startswith("_")}
-
-            # ── Detectar nutrientes faltantes y manejar formulario ─────────
-            CAMPOS_REQUERIDOS = {
-                "calorias":         "Calorias (kcal)",
-                "grasas_totales":   "Grasas totales (g)",
-                "grasas_saturadas": "Grasas saturadas (g)",
-                "sodio":            "Sodio (mg)",
-                "carbohidratos":    "Carbohidratos (g)",
-                "azucares":         "Azucares (g)",
-                "proteinas":        "Proteinas (g)",
-                "fibra":            "Fibra (g)",
-            }
-            LIMITES = {
-                "calorias":         (0.0, 2000.0, 1.0),
-                "grasas_totales":   (0.0,  200.0, 0.1),
-                "grasas_saturadas": (0.0,  100.0, 0.1),
-                "sodio":            (0.0, 5000.0, 1.0),
-                "carbohidratos":    (0.0,  500.0, 0.1),
-                "azucares":         (0.0,  300.0, 0.1),
-                "proteinas":        (0.0,  100.0, 0.1),
-                "fibra":            (0.0,  100.0, 0.1),
-            }
-
-            faltantes   = [c for c in CAMPOS_REQUERIDOS
-                           if c not in datos_limpios or datos_limpios.get(c) is None]
-            encontrados = len(CAMPOS_REQUERIDOS) - len(faltantes)
-
-            if faltantes:
-                msg = (
-                    f"Producto no encontrado en ninguna base de datos. "
-                    f"Ingrese los {len(faltantes)} valores nutricionales:"
-                    if fuente_datos == "nuevo"
-                    else f"**{encontrados} de 8 nutrientes encontrados.** "
-                         f"Complete los {len(faltantes)} campos faltantes:"
+                status.update(
+                    label=f"Producto encontrado: {nombre_encontrado}",
+                    state="complete"
                 )
-                st.warning(msg)
 
-                # Formulario con claves ss_ que persisten en session_state
-                with st.form("form_completar_bc", clear_on_submit=False):
-                    st.markdown("#### Completar nutrientes faltantes")
+            # Guardar en session_state para no re-escanear en cada rerun
+            st.session_state["bc_datos"]        = datos_bc
+            st.session_state["bc_codigo"]       = codigo
+            st.session_state["bc_fuente"]       = fuente_datos
+            st.session_state["bc_imagen_nueva"] = False
 
-                    if fuente_datos == "nuevo":
-                        st.text_input("Nombre del producto",
-                                      value=nombre_encontrado,
-                                      key="ss_nombre")
+        else:
+            # Recuperar datos del session_state
+            datos_bc          = st.session_state["bc_datos"]
+            codigo            = st.session_state["bc_codigo"]
+            fuente_datos      = st.session_state["bc_fuente"]
+            nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
+            marca_encontrada  = datos_bc.get("_marca", "")
+            nutriscore        = datos_bc.get("_nutriscore", "")
+            imagen_url        = datos_bc.get("_imagen_url", "")
 
-                    cols = st.columns(2)
-                    for i, campo in enumerate(faltantes):
-                        mn, mx, step = LIMITES[campo]
-                        with cols[i % 2]:
-                            st.number_input(
-                                CAMPOS_REQUERIDOS[campo],
-                                min_value=mn, max_value=mx,
-                                value=0.0, step=step,
-                                key=f"ss_{campo}"
-                            )
+        # Mostrar tarjeta del producto encontrado
+        col_img, col_info = st.columns([1, 2])
+        with col_img:
+            if imagen_url:
+                st.image(imagen_url, width=120)
+            else:
+                st.markdown(
+                    "<div style='background:#1a2535;border-radius:10px;"
+                    "height:80px;display:flex;align-items:center;"
+                    "justify-content:center;font-size:2rem'>📦</div>",
+                    unsafe_allow_html=True
+                )
+        with col_info:
+            st.markdown(f"**{nombre_encontrado}**")
+            if marca_encontrada:
+                st.caption(f"Marca: {marca_encontrada}")
 
-                    st.divider()
-                    st.text_input("Tu nombre o alias (opcional)",
-                                  placeholder="Ej: Johan",
-                                  key="ss_contribuidor")
-                    st.checkbox(
-                        "Guardar en NutriLab DB para ayudar a otros usuarios",
-                        value=True,
-                        disabled=not SUPABASE_DISPONIBLE,
-                        key="ss_guardar"
-                    )
-                    submit_btn = st.form_submit_button(
-                        "Analizar y guardar",
-                        use_container_width=True
-                    )
+            # Badge de fuente de datos
+            if fuente_datos == "nutrilab":
+                st.markdown(
+                    "<span style='background:#2ecc71;color:white;padding:2px 10px;"
+                    "border-radius:6px;font-size:0.75rem;font-weight:700'>"
+                    "NutriLab DB</span>",
+                    unsafe_allow_html=True
+                )
+            elif fuente_datos == "openfoodfacts":
+                st.markdown(
+                    "<span style='background:#3498db;color:white;padding:2px 10px;"
+                    "border-radius:6px;font-size:0.75rem;font-weight:700'>"
+                    "Open Food Facts</span>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    "<span style='background:#e67e22;color:white;padding:2px 10px;"
+                    "border-radius:6px;font-size:0.75rem;font-weight:700'>"
+                    "Nuevo producto</span>",
+                    unsafe_allow_html=True
+                )
 
-                if not submit_btn:
-                    st.stop()
+            if nutriscore:
+                colores_ns = {"A":"#2ecc71","B":"#82c341","C":"#f9c74f",
+                              "D":"#f39c12","E":"#e74c3c"}
+                color_ns = colores_ns.get(nutriscore, "#888")
+                st.markdown(
+                    f"<span style='background:{color_ns};color:white;"
+                    f"padding:2px 10px;border-radius:6px;font-weight:700;"
+                    f"font-size:0.85rem'>Nutri-Score {nutriscore}</span>",
+                    unsafe_allow_html=True
+                )
+            st.caption(f"Codigo: {codigo}")
 
-                # Leer valores desde session_state (persisten tras el rerun)
+        # Limpiar metadata antes de analizar
+        datos_limpios = {k: v for k, v in datos_bc.items()
+                         if not k.startswith("_")}
+
+        # ── Detectar nutrientes faltantes y manejar formulario ─────────
+        CAMPOS_REQUERIDOS = {
+            "calorias":         "Calorias (kcal)",
+            "grasas_totales":   "Grasas totales (g)",
+            "grasas_saturadas": "Grasas saturadas (g)",
+            "sodio":            "Sodio (mg)",
+            "carbohidratos":    "Carbohidratos (g)",
+            "azucares":         "Azucares (g)",
+            "proteinas":        "Proteinas (g)",
+            "fibra":            "Fibra (g)",
+        }
+        LIMITES = {
+            "calorias":         (0.0, 2000.0, 1.0),
+            "grasas_totales":   (0.0,  200.0, 0.1),
+            "grasas_saturadas": (0.0,  100.0, 0.1),
+            "sodio":            (0.0, 5000.0, 1.0),
+            "carbohidratos":    (0.0,  500.0, 0.1),
+            "azucares":         (0.0,  300.0, 0.1),
+            "proteinas":        (0.0,  100.0, 0.1),
+            "fibra":            (0.0,  100.0, 0.1),
+        }
+
+        faltantes   = [c for c in CAMPOS_REQUERIDOS
+                       if c not in datos_limpios or datos_limpios.get(c) is None]
+        encontrados = len(CAMPOS_REQUERIDOS) - len(faltantes)
+
+        if faltantes:
+            msg = (
+                f"Producto no encontrado en ninguna base de datos. "
+                f"Ingrese los {len(faltantes)} valores nutricionales:"
+                if fuente_datos == "nuevo"
+                else f"**{encontrados} de 8 nutrientes encontrados.** "
+                     f"Complete los {len(faltantes)} campos faltantes:"
+            )
+            st.warning(msg)
+
+            # Formulario con claves ss_ que persisten en session_state
+            with st.form("form_completar_bc", clear_on_submit=False):
+                st.markdown("#### Completar nutrientes faltantes")
+
                 if fuente_datos == "nuevo":
-                    datos_limpios["nombre_producto"] = (
-                        st.session_state.get("ss_nombre") or nombre_encontrado
-                    )
+                    st.text_input("Nombre del producto",
+                                  value=nombre_encontrado,
+                                  key="ss_nombre")
 
-                for campo in faltantes:
-                    val = st.session_state.get(f"ss_{campo}", 0.0)
-                    if val and float(val) > 0:
-                        datos_limpios[campo] = float(val)
-
-                guardar_bd   = st.session_state.get("ss_guardar", True)
-                contribuidor = st.session_state.get("ss_contribuidor", "") or "anonimo"
-
-                if guardar_bd and SUPABASE_DISPONIBLE:
-                    datos_para_guardar = {**datos_bc, **datos_limpios}
-                    exito, error_msg = db_guardar_producto(
-                        datos_para_guardar,
-                        codigo,
-                        contribuidor.strip()
-                    )
-                    if exito:
-                        st.success(
-                            "Gracias por contribuir a NutriLab. "
-                            "Este producto ya estara disponible para otros usuarios."
+                cols = st.columns(2)
+                for i, campo in enumerate(faltantes):
+                    mn, mx, step = LIMITES[campo]
+                    with cols[i % 2]:
+                        st.number_input(
+                            CAMPOS_REQUERIDOS[campo],
+                            min_value=mn, max_value=mx,
+                            value=0.0, step=step,
+                            key=f"ss_{campo}"
                         )
-                        st.balloons()
-                        for k in ["bc_datos","bc_codigo","bc_fuente","bc_imagen_nueva"]:
-                            st.session_state.pop(k, None)
-                    else:
-                        st.error(f"Error al guardar: {error_msg}")
 
-            resultado = analizar_nutrientes(datos_limpios)
+                st.divider()
+                st.text_input("Tu nombre o alias (opcional)",
+                              placeholder="Ej: Johan",
+                              key="ss_contribuidor")
+                st.checkbox(
+                    "Guardar en NutriLab DB para ayudar a otros usuarios",
+                    value=True,
+                    disabled=not SUPABASE_DISPONIBLE,
+                    key="ss_guardar"
+                )
+                submit_btn = st.form_submit_button(
+                    "Analizar y guardar",
+                    use_container_width=True
+                )
 
-        except ValueError as e:
-            st.error(str(e))
-            st.info("Puede ingresar los datos manualmente en la pestana **Manual**.")
-            st.stop()
-        except ConnectionError as e:
-            st.error(str(e))
-            st.stop()
-        except Exception as e:
-            st.error(f"Error inesperado: {e}")
-            st.stop()
+            if not submit_btn:
+                st.stop()
+
+            # Leer valores desde session_state (persisten tras el rerun)
+            if fuente_datos == "nuevo":
+                datos_limpios["nombre_producto"] = (
+                    st.session_state.get("ss_nombre") or nombre_encontrado
+                )
+
+            for campo in faltantes:
+                val = st.session_state.get(f"ss_{campo}", 0.0)
+                if val and float(val) > 0:
+                    datos_limpios[campo] = float(val)
+
+            guardar_bd   = st.session_state.get("ss_guardar", True)
+            contribuidor = st.session_state.get("ss_contribuidor", "") or "anonimo"
+
+            if guardar_bd and SUPABASE_DISPONIBLE:
+                datos_para_guardar = {**datos_bc, **datos_limpios}
+                exito, error_msg = db_guardar_producto(
+                    datos_para_guardar,
+                    codigo,
+                    contribuidor.strip()
+                )
+                if exito:
+                    st.success(
+                        "Gracias por contribuir a NutriLab. "
+                        "Este producto ya estara disponible para otros usuarios."
+                    )
+                    st.balloons()
+                    for k in ["bc_datos","bc_codigo","bc_fuente","bc_imagen_nueva"]:
+                        st.session_state.pop(k, None)
+                else:
+                    st.error(f"Error al guardar: {error_msg}")
+
+        resultado = analizar_nutrientes(datos_limpios)
+
+    except ValueError as e:
+        st.error(str(e))
+        st.info("Puede ingresar los datos manualmente en la pestana **Manual**.")
+        st.stop()
+    except ConnectionError as e:
+        st.error(str(e))
+        st.stop()
+    except Exception as e:
+        st.error(f"Error inesperado: {e}")
+        st.stop()
 
 
 # ─── Resultados ───────────────────────────────────────────────────────────────
