@@ -584,7 +584,7 @@ st.markdown("""
     /* ── Zona de carga de imagen (file uploader) ── */
     [data-testid="stSidebar"] [data-testid="stFileUploader"] {
         background-color: #162030 !important;
-        border: 2px dashed #3d5a73 !important;
+        border: 2px dashed #4a7a96 !important;
         border-radius: 12px !important;
         padding: 8px !important;
         transition: border-color 0.2s !important;
@@ -592,24 +592,58 @@ st.markdown("""
     [data-testid="stSidebar"] [data-testid="stFileUploader"]:hover {
         border-color: #2ecc71 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stFileUploader"] * {
-        color: #a8c4d8 !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] {
-        color: #8fa8bf !important;
+
+    /* Todos los textos internos del uploader */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] *,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] *,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] *,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] span,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] small,
+    [data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] small {
+        color: #c8dcea !important;
+        opacity: 1 !important;
     }
 
-    /* ── Boton Browse files del uploader ── */
-    [data-testid="stSidebar"] [data-testid="stFileUploader"] button {
-        background-color: #243447 !important;
+    /* Texto "200MB per file • JPG, PNG..." */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] small,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] .uploadInstructions,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] span[class*="instruc"],
+    [data-testid="stSidebar"] [class*="fileUploaderDropzoneInstructions"] span {
+        color: #c8dcea !important;
+        font-size: 0.78rem !important;
+        opacity: 1 !important;
+    }
+
+    /* Icono de subida */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] svg {
+        fill: #4a9ebe !important;
+        opacity: 1 !important;
+    }
+
+    /* Boton Browse files */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+        background-color: #1e3a52 !important;
         color: #2ecc71 !important;
         border: 1.5px solid #2ecc71 !important;
         border-radius: 6px !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
+        font-size: 0.82rem !important;
+        padding: 5px 14px !important;
+        opacity: 1 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stFileUploader"] button:hover {
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button:hover,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button:hover {
         background-color: #2ecc71 !important;
-        color: #fff !important;
+        color: #ffffff !important;
+    }
+
+    /* Nombre del archivo una vez cargado */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] li span {
+        color: #ffffff !important;
+        font-weight: 600 !important;
     }
 
     /* ── Previa de imagen subida ── */
@@ -667,6 +701,34 @@ st.markdown("""
     /* ── Ocultar borde inferior de tabs en sidebar ── */
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
         padding-top: 12px !important;
+    }
+
+    /* ── Respaldo global: fuerza visibilidad en todos los spans del sidebar ── */
+    /* Cubre clases dinámicas que Streamlit genera en runtime */
+    [data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] {
+        background-color: #162030 !important;
+        border-radius: 10px !important;
+    }
+    [data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] span {
+        color: #c8dcea !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+    [data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] small {
+        color: #8fb8d0 !important;
+        opacity: 1 !important;
+        font-size: 0.75rem !important;
+    }
+    [data-testid="stSidebar"] section[data-testid="stFileUploaderDropzone"] p {
+        color: #c8dcea !important;
+    }
+
+    /* Forzar color en cualquier texto claro sobre fondo oscuro */
+    [data-testid="stSidebar"] [class*="overflowMenuButton"],
+    [data-testid="stSidebar"] [class*="uploadInstruction"],
+    [data-testid="stSidebar"] [class*="fileDropInstructions"] {
+        color: #c8dcea !important;
+        opacity: 1 !important;
     }
 </style>
 """, unsafe_allow_html=True)
