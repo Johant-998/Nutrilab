@@ -1224,128 +1224,111 @@ with st.spinner("Analizando nutrientes..."):
             datos_limpios = {k: v for k, v in datos_bc.items()
                              if not k.startswith("_")}
 
-            # ── Detectar nutrientes faltantes ─────────────────────────────────
+            # ── Detectar nutrientes faltantes y manejar formulario ─────────
             CAMPOS_REQUERIDOS = {
-                "calorias": "Calorias (kcal)",
-                "grasas_totales": "Grasas totales (g)",
+                "calorias":         "Calorias (kcal)",
+                "grasas_totales":   "Grasas totales (g)",
                 "grasas_saturadas": "Grasas saturadas (g)",
-                "sodio": "Sodio (mg)",
-                "carbohidratos": "Carbohidratos (g)",
-                "azucares": "Azucares (g)",
-                "proteinas": "Proteinas (g)",
-                "fibra": "Fibra (g)",
+                "sodio":            "Sodio (mg)",
+                "carbohidratos":    "Carbohidratos (g)",
+                "azucares":         "Azucares (g)",
+                "proteinas":        "Proteinas (g)",
+                "fibra":            "Fibra (g)",
             }
             LIMITES = {
-                "calorias": (0.0, 2000.0, 1.0),
-                "grasas_totales": (0.0, 200.0, 0.1),
-                "grasas_saturadas": (0.0, 100.0, 0.1),
-                "sodio": (0.0, 5000.0, 1.0),
-                "carbohidratos": (0.0, 500.0, 0.1),
-                "azucares": (0.0, 300.0, 0.1),
-                "proteinas": (0.0, 100.0, 0.1),
-                "fibra": (0.0, 100.0, 0.1),
+                "calorias":         (0.0, 2000.0, 1.0),
+                "grasas_totales":   (0.0,  200.0, 0.1),
+                "grasas_saturadas": (0.0,  100.0, 0.1),
+                "sodio":            (0.0, 5000.0, 1.0),
+                "carbohidratos":    (0.0,  500.0, 0.1),
+                "azucares":         (0.0,  300.0, 0.1),
+                "proteinas":        (0.0,  100.0, 0.1),
+                "fibra":            (0.0,  100.0, 0.1),
             }
 
-            faltantes = [c for c in CAMPOS_REQUERIDOS if c not in datos_limpios
-                         or datos_limpios.get(c) is None]
+            faltantes   = [c for c in CAMPOS_REQUERIDOS
+                           if c not in datos_limpios or datos_limpios.get(c) is None]
             encontrados = len(CAMPOS_REQUERIDOS) - len(faltantes)
 
             if faltantes:
-                if fuente_datos == "nuevo":
-                    st.warning(
-                        f"Producto **{nombre_encontrado}** no encontrado en ninguna base "
-                        f"de datos. Ingrese los {len(faltantes)} valores nutricionales "
-                        "y contribuya al banco de datos NutriLab:"
-                    )
-                else:
-                    st.warning(
-                        f"**{encontrados} de 8 nutrientes encontrados.** "
-                        f"Complete los {len(faltantes)} campos faltantes:"
-                    )
+                msg = (
+                    f"Producto no encontrado en ninguna base de datos. "
+                    f"Ingrese los {len(faltantes)} valores nutricionales:"
+                    if fuente_datos == "nuevo"
+                    else f"**{encontrados} de 8 nutrientes encontrados.** "
+                         f"Complete los {len(faltantes)} campos faltantes:"
+                )
+                st.warning(msg)
 
-                with st.form("form_completar_bc"):
+                # Formulario con claves ss_ que persisten en session_state
+                with st.form("form_completar_bc", clear_on_submit=False):
                     st.markdown("#### Completar nutrientes faltantes")
 
-                    # Campo de nombre si es producto nuevo
-                    nombre_editado = nombre_encontrado
                     if fuente_datos == "nuevo":
-                        nombre_editado = st.text_input(
-                            "Nombre del producto",
-                            value=nombre_encontrado,
-                            key="bc_nombre"
-                        )
+                        st.text_input("Nombre del producto",
+                                      value=nombre_encontrado,
+                                      key="ss_nombre")
 
                     cols = st.columns(2)
-                    valores_extra = {}
                     for i, campo in enumerate(faltantes):
-                        etiqueta = CAMPOS_REQUERIDOS[campo]
                         mn, mx, step = LIMITES[campo]
                         with cols[i % 2]:
-                            valores_extra[campo] = st.number_input(
-                                etiqueta, min_value=mn, max_value=mx,
-                                value=0.0, step=step, key=f"bc_{campo}"
+                            st.number_input(
+                                CAMPOS_REQUERIDOS[campo],
+                                min_value=mn, max_value=mx,
+                                value=0.0, step=step,
+                                key=f"ss_{campo}"
                             )
 
-                    # Campo de contribuidor
                     st.divider()
-                    contribuidor = st.text_input(
-                        "Tu nombre o alias (opcional)",
-                        placeholder="Ej: Johan — aparecera en la contribucion",
-                        key="bc_contribuidor"
-                    )
-                    guardar_bd = st.checkbox(
-                        "Guardar en la base de datos NutriLab para ayudar a otros usuarios",
+                    st.text_input("Tu nombre o alias (opcional)",
+                                  placeholder="Ej: Johan",
+                                  key="ss_contribuidor")
+                    st.checkbox(
+                        "Guardar en NutriLab DB para ayudar a otros usuarios",
                         value=True,
                         disabled=not SUPABASE_DISPONIBLE,
-                        help="Los datos se guardan de forma anonima y ayudan a "
-                             "otros usuarios que escaneen el mismo producto.",
-                        key="bc_guardar"
+                        key="ss_guardar"
                     )
-                    if not SUPABASE_DISPONIBLE:
-                        st.caption("Base de datos no disponible — configure Supabase Secrets.")
-
-                    completar = st.form_submit_button(
+                    submit_btn = st.form_submit_button(
                         "Analizar y guardar",
                         use_container_width=True
                     )
 
-                if not completar:
+                if not submit_btn:
                     st.stop()
 
-                # Actualizar nombre si fue editado
+                # Leer valores desde session_state (persisten tras el rerun)
                 if fuente_datos == "nuevo":
-                    datos_limpios["nombre_producto"] = nombre_editado or nombre_encontrado
+                    datos_limpios["nombre_producto"] = (
+                        st.session_state.get("ss_nombre") or nombre_encontrado
+                    )
 
-                # Combinar datos de la API con los ingresados manualmente
-                datos_limpios.update({
-                    k: v for k, v in valores_extra.items() if v > 0
-                })
+                for campo in faltantes:
+                    val = st.session_state.get(f"ss_{campo}", 0.0)
+                    if val and float(val) > 0:
+                        datos_limpios[campo] = float(val)
 
-                # Guardar en Supabase si el usuario lo autorizó
+                guardar_bd   = st.session_state.get("ss_guardar", True)
+                contribuidor = st.session_state.get("ss_contribuidor", "") or "anonimo"
+
                 if guardar_bd and SUPABASE_DISPONIBLE:
                     datos_para_guardar = {**datos_bc, **datos_limpios}
                     exito, error_msg = db_guardar_producto(
                         datos_para_guardar,
                         codigo,
-                        contribuidor.strip() or "anonimo"
+                        contribuidor.strip()
                     )
                     if exito:
                         st.success(
-                            "Gracias por contribuir al banco de datos NutriLab. "
+                            "Gracias por contribuir a NutriLab. "
                             "Este producto ya estara disponible para otros usuarios."
                         )
                         st.balloons()
+                        for k in ["bc_datos","bc_codigo","bc_fuente","bc_imagen_nueva"]:
+                            st.session_state.pop(k, None)
                     else:
-                        st.error(f"No se pudo guardar: {error_msg}")
-                        # Si es error de RLS mostrar instruccion especifica
-                        if "RLS" in error_msg or "policy" in error_msg.lower() or "permission" in error_msg.lower():
-                            st.info(
-                                "Error de permisos en Supabase. "
-                                "Ejecute en el SQL Editor de Supabase:\n"
-                                "```sql\n"
-                                "ALTER TABLE productos DISABLE ROW LEVEL SECURITY;\n"
-                                "```"
-                            )
+                        st.error(f"Error al guardar: {error_msg}")
 
             resultado = analizar_nutrientes(datos_limpios)
 
