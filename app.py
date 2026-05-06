@@ -1064,6 +1064,11 @@ if not BARCODE_DISPONIBLE:
 
 st.divider()
 
+# Si hay datos de barcode en session_state con formulario pendiente, continuar
+if not analizar and "bc_datos" in st.session_state:
+    analizar = True
+    modo = "Barcode"
+
 if not analizar:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1095,11 +1100,16 @@ if modo == "Manual":
 
 else:
     imagen_bytes_bc = datos_formulario.get("_imagen_bytes_bc")
-    if not imagen_bytes_bc:
+
+    # Si no hay imagen pero hay datos en session_state, continuar con esos datos
+    # (esto ocurre cuando el usuario presiona submit en el formulario)
+    tiene_session = "bc_datos" in st.session_state and not st.session_state.get("bc_imagen_nueva")
+
+    if not imagen_bytes_bc and not tiene_session:
         st.error("Suba una imagen con el codigo de barras del producto.")
         st.stop()
+
     try:
-        # Usar session_state para persistir datos entre reruns del formulario
         if "bc_datos" not in st.session_state or st.session_state.get("bc_imagen_nueva"):
 
             with st.status("Leyendo codigo de barras...", expanded=True) as status:
