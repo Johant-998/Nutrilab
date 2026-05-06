@@ -15,6 +15,7 @@
 
 import os
 import re
+import requests
 from datetime import datetime
 
 import matplotlib.pyplot as plt
@@ -23,42 +24,16 @@ import numpy as np
 import streamlit as st
 from fpdf import FPDF
 
-# Importacion condicional de OCR
-# Se busca tesseract en las rutas mas comunes de Linux/Mac/Windows
-_TESSERACT_PATHS = [
-    '/usr/bin/tesseract',
-    '/usr/local/bin/tesseract',
-    '/opt/homebrew/bin/tesseract',
-    r'C:/Program Files/Tesseract-OCR/tesseract.exe',
-]
-
-OCR_DISPONIBLE = False
-OCR_ERROR      = ""
+# Importacion condicional del lector de codigo de barras
+BARCODE_DISPONIBLE = False
+BARCODE_ERROR      = ""
 
 try:
-    import cv2
-    import pytesseract
+    from pyzbar.pyzbar import decode
     from PIL import Image as PILImage
-    import shutil
-
-    # Configurar ruta de tesseract explicitamente
-    ruta_auto = shutil.which("tesseract")
-    if ruta_auto:
-        pytesseract.pytesseract.tesseract_cmd = ruta_auto
-    else:
-        for ruta in _TESSERACT_PATHS:
-            if os.path.exists(ruta):
-                pytesseract.pytesseract.tesseract_cmd = ruta
-                break
-
-    # Verificar que tesseract responde correctamente
-    pytesseract.get_tesseract_version()
-    OCR_DISPONIBLE = True
-
+    BARCODE_DISPONIBLE = True
 except ImportError as e:
-    OCR_ERROR = f"Libreria faltante: {e}"
-except Exception as e:
-    OCR_ERROR = str(e)
+    BARCODE_ERROR = str(e)
 
 
 # =============================================================================
@@ -410,86 +385,150 @@ def generar_pdf_bytes(resultado: dict, ruta_grafica: str = None) -> bytes:
 
 
 # =============================================================================
-# MODULO OCR (solo activo si pytesseract esta disponible)
+# MODULO LECTOR DE CODIGO DE BARRAS + OPEN FOOD FACTS
 # =============================================================================
 
-PATRONES_OCR = {
-    "calorias": [
-        r"calor[ií]as?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*kcal",
-        r"energ[ií]a\s*[:\-]?\s*(\d+[\.,]?\d*)\s*kcal",
-        r"(\d+[\.,]?\d*)\s*kcal",
-    ],
-    "grasas_totales": [
-        r"grasa[s]?\s*total[e]?[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"l[ií]pido[s]?\s*total[e]?[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-    ],
-    "grasas_saturadas": [
-        r"grasa[s]?\s*saturada[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"saturada[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-    ],
-    "sodio": [
-        r"sodio\s*[:\-]?\s*(\d+[\.,]?\d*)\s*mg",
-        r"na\s*[:\-]?\s*(\d+[\.,]?\d*)\s*mg",
-    ],
-    "carbohidratos": [
-        r"carbohidrato[s]?\s*total[e]?[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"carbohidrato[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"hidratos?\s*de\s*carbono\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-    ],
-    "azucares": [
-        r"az[uú]care[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"az[uú]car\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-    ],
-    "proteinas": [
-        r"prote[ií]na[s]?\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"prot\.\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-    ],
-    "fibra": [
-        r"fibra\s*diet[eé]tica\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-        r"fibra\s*[:\-]?\s*(\d+[\.,]?\d*)\s*g",
-    ],
-}
+# URL base de la API Open Food Facts (gratuita, sin API key)
+OFF_API_URL = "https://world.openfoodfacts.org/api/v0/product/{codigo}.json"
+OFF_HEADERS = {"User-Agent": "NutriLab/1.0 (proyecto educativo)"}
 
 
-def _ocr_parsear(texto: str) -> dict:
-    """Extrae valores nutricionales del texto crudo del OCR usando regex."""
-    datos = {}
-    for nutriente, patrones in PATRONES_OCR.items():
-        for patron in patrones:
-            match = re.search(patron, texto, re.IGNORECASE)
-            if match:
-                try:
-                    datos[nutriente] = float(match.group(1).replace(",", "."))
-                    break
-                except ValueError:
-                    continue
-    return datos
+def barcode_leer_imagen(imagen_bytes: bytes) -> str:
+    """
+    Decodifica el codigo de barras de una imagen usando pyzbar.
+    Intenta con la imagen original y luego con variantes de contraste
+    si no detecta ningun codigo en el primer intento.
+
+    Parametros:
+        imagen_bytes (bytes): Contenido de la imagen en bytes.
+
+    Retorna:
+        str: Numero del codigo de barras (EAN-13, UPC-A, etc.)
+
+    Lanza:
+        ValueError: Si no se detecta ningun codigo de barras.
+    """
+    imagen_pil = PILImage.open(__import__('io').BytesIO(imagen_bytes))
+
+    # Intentar decodificar en imagen original
+    codigos = decode(imagen_pil)
+
+    # Si no encuentra, intentar con escala de grises
+    if not codigos:
+        imagen_gris = imagen_pil.convert("L")
+        codigos = decode(imagen_gris)
+
+    # Si tampoco, aumentar contraste
+    if not codigos:
+        from PIL import ImageEnhance
+        imagen_contraste = ImageEnhance.Contrast(imagen_pil).enhance(2.0)
+        codigos = decode(imagen_contraste)
+
+    if not codigos:
+        raise ValueError(
+            "No se detecto ningun codigo de barras en la imagen. "
+            "Asegurese de que el codigo de barras sea visible, "
+            "este bien iluminado y no este borroso."
+        )
+
+    # Retornar el primer codigo detectado
+    codigo = codigos[0].data.decode("utf-8").strip()
+    tipo   = codigos[0].type
+    return codigo, tipo
 
 
-def _ocr_procesar_imagen(imagen_bytes: bytes) -> tuple:
-    """Pipeline OCR completo desde bytes de imagen. Retorna (datos, texto_crudo)."""
-    arr  = np.frombuffer(imagen_bytes, np.uint8)
-    img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    gris = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    alto, ancho = gris.shape
-    if ancho < 1200:
-        gris = cv2.resize(gris, (1200, int(alto * 1200 / ancho)),
-                          interpolation=cv2.INTER_CUBIC)
-    clahe   = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gris    = clahe.apply(gris)
-    binaria = cv2.adaptiveThreshold(
-        gris, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 15, 8,
-    )
-    img_pil = PILImage.fromarray(binaria)
+def barcode_consultar_api(codigo: str) -> dict:
+    """
+    Consulta la API de Open Food Facts con el codigo de barras
+    y extrae los nutrientes del producto encontrado.
+
+    Parametros:
+        codigo (str): Numero EAN/UPC del producto.
+
+    Retorna:
+        dict: Datos del producto con nutrientes listos para analizar.
+
+    Lanza:
+        ValueError: Si el producto no existe en la base de datos.
+        ConnectionError: Si no hay conexion a internet.
+    """
+    url = OFF_API_URL.format(codigo=codigo)
+
     try:
-        texto = pytesseract.image_to_string(img_pil, lang="spa+eng", config="--psm 6")
-    except Exception:
-        texto = pytesseract.image_to_string(img_pil, lang="eng", config="--psm 6")
-    texto = texto.strip().lower()
-    return _ocr_parsear(texto), texto
+        respuesta = requests.get(url, headers=OFF_HEADERS, timeout=10)
+        respuesta.raise_for_status()
+        data = respuesta.json()
+    except requests.exceptions.ConnectionError:
+        raise ConnectionError("Sin conexion a internet. Verifique su red.")
+    except requests.exceptions.Timeout:
+        raise ConnectionError("La API tardo demasiado. Intente de nuevo.")
+    except Exception as e:
+        raise ConnectionError(f"Error de conexion: {e}")
 
+    # Verificar si el producto existe en la base de datos
+    if data.get("status") != 1:
+        raise ValueError(
+            f"Producto con codigo {codigo} no encontrado en Open Food Facts. "
+            "Puede ingresar los datos manualmente en la pestana Manual."
+        )
+
+    producto    = data["product"]
+    nutriments  = producto.get("nutriments", {})
+    nombre_prod = producto.get("product_name", "") or producto.get("product_name_es", "")
+    marca       = producto.get("brands", "")
+    pais        = producto.get("countries", "")
+
+    # Extraer porcion — intentar varias claves
+    porcion_g = (
+        producto.get("serving_size") or
+        nutriments.get("serving_size") or
+        "100g"
+    )
+    # Convertir porcion a numero
+    try:
+        porcion_num = float(re.search(r"[\d.]+", str(porcion_g)).group())
+    except Exception:
+        porcion_num = 100.0
+
+    # ── Extraer nutrientes ────────────────────────────────────────────────────
+    # Open Food Facts guarda valores por 100g (_100g) y por porcion (_serving)
+    # Preferimos por porcion si existe, sino usamos por 100g
+
+    def get_nutriente(clave_serving, clave_100g, factor=1.0):
+        """Obtiene valor por porcion o calcula desde por 100g."""
+        val = nutriments.get(clave_serving)
+        if val is None:
+            val_100g = nutriments.get(clave_100g)
+            if val_100g is not None:
+                val = val_100g * (porcion_num / 100)
+        if val is None:
+            return None
+        return round(float(val) * factor, 2)
+
+    datos = {
+        "nombre_producto":  f"{nombre_prod} — {marca}".strip(" —") or "Producto escaneado",
+        "porcion_g":        porcion_num,
+        "calorias":         get_nutriente("energy-kcal_serving",       "energy-kcal_100g"),
+        "grasas_totales":   get_nutriente("fat_serving",               "fat_100g"),
+        "grasas_saturadas": get_nutriente("saturated-fat_serving",     "saturated-fat_100g"),
+        "sodio":            get_nutriente("sodium_serving",            "sodium_100g", 1000),
+        "carbohidratos":    get_nutriente("carbohydrates_serving",     "carbohydrates_100g"),
+        "azucares":         get_nutriente("sugars_serving",            "sugars_100g"),
+        "proteinas":        get_nutriente("proteins_serving",          "proteins_100g"),
+        "fibra":            get_nutriente("fiber_serving",             "fiber_100g"),
+        # Metadata extra para mostrar en la UI
+        "_codigo":          codigo,
+        "_marca":           marca,
+        "_pais":            pais,
+        "_imagen_url":      producto.get("image_front_url", ""),
+        "_nutriscore":      producto.get("nutriscore_grade", "").upper(),
+        "_nova":            producto.get("nova_group", ""),
+    }
+
+    # Remover campos None para no romper el analisis
+    datos = {k: v for k, v in datos.items() if v is not None or k.startswith("_")}
+
+    return datos
 
 # =============================================================================
 # INTERFAZ STREAMLIT
@@ -779,63 +818,55 @@ with st.sidebar:
         modo    = "Manual"
         analizar = analizar_manual
 
-    # ── PESTAÑA OCR ───────────────────────────────────────────────────────────
+    # ── PESTAÑA CODIGO DE BARRAS ─────────────────────────────────────────────
     with tab_ocr:
-        if not OCR_DISPONIBLE:
-            st.error(
-                f"**OCR no disponible**\n\nCausa: `{OCR_ERROR}`"
-            )
+        if not BARCODE_DISPONIBLE:
+            st.error(f"Libreria no disponible: `{BARCODE_ERROR}`\n\n"
+                     "Agregue `pyzbar` a requirements.txt y haga Reboot app.")
         else:
-            # Instrucciones compactas
             st.markdown("""
 <div style='background:#162030;border-radius:10px;padding:10px 12px;
             border:1px solid #3d5a73;margin-bottom:10px;font-size:0.8rem;
             color:#a8c4d8;line-height:1.6'>
-📸 <b style="color:#2ecc71">Consejos para mejor lectura</b><br>
-• Foto frontal, sin inclinación<br>
-• Buena iluminación, sin reflejos<br>
-• Imagen nítida y de alta resolución
+📦 <b style="color:#2ecc71">Como tomar la foto</b><br>
+• Enfoca solo el codigo de barras<br>
+• Iluminacion uniforme, sin sombras<br>
+• Foto horizontal, codigo centrado<br>
+• Base de datos: Open Food Facts
 </div>
 """, unsafe_allow_html=True)
 
-            nombre_ocr = st.text_input("Nombre del producto",
-                                       placeholder="Escriba manualmente",
-                                       key="nombre_ocr")
-
-            archivo = st.file_uploader(
-                "Arrastra o selecciona la foto",
+            archivo_bc = st.file_uploader(
+                "Foto del codigo de barras",
                 type=["jpg", "jpeg", "png", "bmp", "webp"],
-                help="Formatos soportados: JPG, PNG, BMP, WEBP",
-                key="file_ocr",
+                help="EAN-13, EAN-8, UPC-A, UPC-E",
+                key="file_barcode",
             )
 
-            if archivo:
-                # Previsualización con overlay de estado
-                st.image(archivo, caption="✅ Imagen lista para escanear",
+            if archivo_bc:
+                st.image(archivo_bc, caption="Imagen cargada",
                          use_container_width=True)
 
-            analizar_ocr = st.button(
-                "📷  Escanear etiqueta",
+            analizar_bc = st.button(
+                "🔍  Escanear codigo",
                 use_container_width=True,
-                disabled=(not OCR_DISPONIBLE or archivo is None),
-                key="btn_ocr",
+                disabled=(not BARCODE_DISPONIBLE or archivo_bc is None),
+                key="btn_barcode",
             )
 
-            datos_formulario_ocr = {
-                "nombre_producto": nombre_ocr or "Producto escaneado"
-            }
-            if archivo:
-                datos_formulario_ocr["_imagen_bytes"] = archivo.read()
+        datos_formulario_bc = {}
+        if BARCODE_DISPONIBLE and archivo_bc:
+            datos_formulario_bc["_imagen_bytes_bc"] = archivo_bc.read()
 
-            if analizar_ocr:
-                modo             = "Foto (OCR)"
-                analizar         = True
-                datos_formulario = datos_formulario_ocr
-            else:
-                modo    = "Foto (OCR)"
-                analizar = False
-                if not analizar_manual:
-                    datos_formulario = datos_formulario_ocr
+        if analizar_bc:
+            modo             = "Barcode"
+            analizar         = True
+            datos_formulario = datos_formulario_bc
+        else:
+            if not analizar_manual:
+                modo             = "Barcode"
+                analizar         = False
+                datos_formulario = datos_formulario_bc
 
 
 
@@ -844,27 +875,13 @@ with st.sidebar:
 st.markdown("# NutriLab")
 st.markdown("**Analizador de Etiquetas Nutricionales** - Resolucion 810/2021 - Min. Salud Colombia")
 
-# Panel de diagnostico OCR (visible solo cuando falla)
-if not OCR_DISPONIBLE:
-    with st.expander("Diagnostico OCR - ver detalles", expanded=False):
-        import shutil, subprocess
-        st.markdown("**Estado del sistema:**")
-        tess_path = shutil.which("tesseract")
-        st.code(f"tesseract en PATH: {tess_path or 'NO ENCONTRADO'}")
-        st.code(f"Error detectado: {OCR_ERROR}")
-        st.markdown("**Rutas verificadas:**")
-        rutas = ['/usr/bin/tesseract', '/usr/local/bin/tesseract',
-                 '/opt/homebrew/bin/tesseract']
-        for r in rutas:
-            import os as _os
-            existe = _os.path.exists(r)
-            st.code(f"{'EXISTE' if existe else 'NO existe'}: {r}")
-        st.markdown("**Solucion:**")
+# Panel de diagnostico Barcode (visible solo cuando falla)
+if not BARCODE_DISPONIBLE:
+    with st.expander("Diagnostico — Lector de codigo de barras", expanded=False):
+        st.code(f"Error: {BARCODE_ERROR}")
         st.info(
-            "1. Cree el archivo `packages.txt` en la raiz de su repositorio GitHub\n"
-            "2. Contenido:\n```\ntesseract-ocr\ntesseract-ocr-spa\n```\n"
-            "3. Haga commit y push\n"
-            "4. En Streamlit Cloud: **Manage app > Reboot app**"
+            "Asegurese de que `pyzbar` este en requirements.txt\n"
+            "y haga **Reboot app** en Streamlit Cloud."
         )
 
 st.divider()
@@ -876,7 +893,7 @@ if not analizar:
         st.markdown("Digita los valores de la etiqueta campo por campo con validacion automatica.")
     with c2:
         st.markdown("#### Escaneo OCR")
-        st.markdown("Sube una foto y el programa extrae los nutrientes con pytesseract.")
+        st.markdown("Escanea el codigo de barras del producto y obtiene los nutrientes automaticamente desde Open Food Facts.")
     with c3:
         st.markdown("#### Reporte PDF")
         st.markdown("Descarga un reporte con tabla, semaforo, grafica y alertas.")
@@ -900,33 +917,68 @@ with st.spinner("Analizando nutrientes..."):
         resultado = analizar_nutrientes(datos_formulario)
 
     else:
-        imagen_bytes = datos_formulario.get("_imagen_bytes")
-        if not imagen_bytes:
-            st.error("Suba una imagen de la etiqueta antes de escanear.")
+        imagen_bytes_bc = datos_formulario.get("_imagen_bytes_bc")
+        if not imagen_bytes_bc:
+            st.error("Suba una imagen con el codigo de barras del producto.")
             st.stop()
         try:
-            with st.status("Procesando imagen...", expanded=True) as status:
-                st.write("Preprocesando imagen con OpenCV...")
-                datos_ocr, texto_crudo = _ocr_procesar_imagen(imagen_bytes)
-                datos_ocr["nombre_producto"] = datos_formulario["nombre_producto"]
-                campos_ok = len([k for k in datos_ocr if k != "nombre_producto"])
-                confianza = round((campos_ok / 8) * 100)
-                st.write(f"Campos detectados: {campos_ok} / 8 (confianza: {confianza}%)")
-                status.update(label=f"Escaneo completado — confianza {confianza}%",
-                              state="complete")
+            with st.status("Leyendo codigo de barras...", expanded=True) as status:
 
-            if confianza < 50:
-                st.warning(
-                    f"Confianza baja ({confianza}%). "
-                    "Intente con una foto mas nitida y bien iluminada."
+                # Paso 1: decodificar codigo de barras
+                st.write("Detectando codigo de barras en la imagen...")
+                codigo, tipo_bc = barcode_leer_imagen(imagen_bytes_bc)
+                st.write(f"Codigo detectado: **{codigo}** ({tipo_bc})")
+
+                # Paso 2: consultar Open Food Facts
+                st.write("Consultando base de datos Open Food Facts...")
+                datos_bc = barcode_consultar_api(codigo)
+
+                # Paso 3: extraer metadata para mostrar
+                nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
+                marca_encontrada  = datos_bc.get("_marca", "")
+                nutriscore        = datos_bc.get("_nutriscore", "")
+                imagen_url        = datos_bc.get("_imagen_url", "")
+
+                status.update(
+                    label=f"Producto encontrado: {nombre_encontrado}",
+                    state="complete"
                 )
 
-            with st.expander("Ver texto crudo detectado por el OCR"):
-                st.code(texto_crudo or "(sin texto detectado)", language=None)
+            # Mostrar tarjeta del producto encontrado
+            col_img, col_info = st.columns([1, 2])
+            with col_img:
+                if imagen_url:
+                    st.image(imagen_url, width=120)
+            with col_info:
+                st.markdown(f"**{nombre_encontrado}**")
+                if marca_encontrada:
+                    st.caption(f"Marca: {marca_encontrada}")
+                if nutriscore:
+                    colores_ns = {"A":"#2ecc71","B":"#82c341","C":"#f9c74f",
+                                  "D":"#f39c12","E":"#e74c3c"}
+                    color_ns = colores_ns.get(nutriscore, "#888")
+                    st.markdown(
+                        f"<span style='background:{color_ns};color:white;"
+                        f"padding:2px 10px;border-radius:6px;font-weight:700;"
+                        f"font-size:0.85rem'>Nutri-Score {nutriscore}</span>",
+                        unsafe_allow_html=True
+                    )
+                st.caption(f"Codigo: {codigo}")
 
-            resultado = analizar_nutrientes(datos_ocr)
+            # Limpiar metadata antes de analizar
+            datos_limpios = {k: v for k, v in datos_bc.items()
+                             if not k.startswith("_")}
+            resultado = analizar_nutrientes(datos_limpios)
+
+        except ValueError as e:
+            st.error(str(e))
+            st.info("Puede ingresar los datos manualmente en la pestana **Manual**.")
+            st.stop()
+        except ConnectionError as e:
+            st.error(str(e))
+            st.stop()
         except Exception as e:
-            st.error(f"Error durante el escaneo: {e}")
+            st.error(f"Error inesperado: {e}")
             st.stop()
 
 
