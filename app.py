@@ -1002,7 +1002,13 @@ with st.sidebar:
 
         datos_formulario_bc = {}
         if BARCODE_DISPONIBLE and archivo_bc:
-            datos_formulario_bc["_imagen_bytes_bc"] = archivo_bc.read()
+            img_bytes = archivo_bc.read()
+            datos_formulario_bc["_imagen_bytes_bc"] = img_bytes
+            # Marcar imagen nueva para forzar re-escaneo
+            img_hash = hash(img_bytes)
+            if st.session_state.get("bc_img_hash") != img_hash:
+                st.session_state["bc_img_hash"]     = img_hash
+                st.session_state["bc_imagen_nueva"] = True
 
         if analizar_bc:
             modo             = "Barcode"
@@ -1094,57 +1100,73 @@ with st.spinner("Analizando nutrientes..."):
             st.error("Suba una imagen con el codigo de barras del producto.")
             st.stop()
         try:
-            with st.status("Leyendo codigo de barras...", expanded=True) as status:
+            # Usar session_state para persistir datos entre reruns del formulario
+            if "bc_datos" not in st.session_state or st.session_state.get("bc_imagen_nueva"):
 
-                # Paso 1: decodificar codigo de barras
-                st.write("Detectando codigo de barras en la imagen...")
-                codigo, tipo_bc = barcode_leer_imagen(imagen_bytes_bc)
-                st.write(f"Codigo detectado: **{codigo}** ({tipo_bc})")
+                with st.status("Leyendo codigo de barras...", expanded=True) as status:
 
-                # Paso 2: buscar primero en base de datos NutriLab
-                datos_bc      = None
-                fuente_datos  = ""
+                    # Paso 1: decodificar
+                    st.write("Detectando codigo de barras en la imagen...")
+                    codigo, tipo_bc = barcode_leer_imagen(imagen_bytes_bc)
+                    st.write(f"Codigo detectado: **{codigo}** ({tipo_bc})")
 
-                if SUPABASE_DISPONIBLE:
-                    st.write("Buscando en base de datos NutriLab...")
-                    registro_local = db_buscar_producto(codigo)
-                    if registro_local:
-                        # Convertir registro Supabase al formato esperado
-                        datos_bc = {k: registro_local.get(k)
-                                    for k in ["nombre_producto","porcion_g"] + CAMPOS_NUTRIENTES
-                                    if registro_local.get(k) is not None}
-                        datos_bc["_marca"]      = registro_local.get("marca", "")
-                        datos_bc["_pais"]       = registro_local.get("pais", "")
-                        datos_bc["_imagen_url"] = ""
-                        datos_bc["_nutriscore"] = ""
-                        fuente_datos = "nutrilab"
-                        st.write(f"Encontrado en NutriLab: **{datos_bc['nombre_producto']}**")
+                    # Paso 2: buscar en NutriLab primero
+                    datos_bc     = None
+                    fuente_datos = ""
 
-                # Paso 3: si no está en NutriLab, consultar Open Food Facts
-                if datos_bc is None:
-                    st.write("Consultando Open Food Facts...")
-                    try:
-                        datos_bc     = barcode_consultar_api(codigo)
-                        fuente_datos = "openfoodfacts"
-                    except ValueError:
-                        # No existe en ninguna BD — crear entrada vacia
-                        datos_bc = {
-                            "nombre_producto": f"Producto {codigo}",
-                            "_marca": "", "_pais": "Colombia",
-                            "_imagen_url": "", "_nutriscore": "",
-                        }
-                        fuente_datos = "nuevo"
+                    if SUPABASE_DISPONIBLE:
+                        st.write("Buscando en base de datos NutriLab...")
+                        registro_local = db_buscar_producto(codigo)
+                        if registro_local:
+                            datos_bc = {k: registro_local.get(k)
+                                        for k in ["nombre_producto","porcion_g"] + CAMPOS_NUTRIENTES
+                                        if registro_local.get(k) is not None}
+                            datos_bc["_marca"]      = registro_local.get("marca", "")
+                            datos_bc["_pais"]       = registro_local.get("pais", "")
+                            datos_bc["_imagen_url"] = ""
+                            datos_bc["_nutriscore"] = ""
+                            fuente_datos = "nutrilab"
+                            st.write(f"Encontrado en NutriLab: **{datos_bc['nombre_producto']}**")
 
-                # Paso 4: extraer metadata para mostrar
+                    # Paso 3: Open Food Facts si no está en NutriLab
+                    if datos_bc is None:
+                        st.write("Consultando Open Food Facts...")
+                        try:
+                            datos_bc     = barcode_consultar_api(codigo)
+                            fuente_datos = "openfoodfacts"
+                        except ValueError:
+                            datos_bc = {
+                                "nombre_producto": f"Producto {codigo}",
+                                "_marca": "", "_pais": "Colombia",
+                                "_imagen_url": "", "_nutriscore": "",
+                            }
+                            fuente_datos = "nuevo"
+
+                    nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
+                    marca_encontrada  = datos_bc.get("_marca", "")
+                    nutriscore        = datos_bc.get("_nutriscore", "")
+                    imagen_url        = datos_bc.get("_imagen_url", "")
+
+                    status.update(
+                        label=f"Producto encontrado: {nombre_encontrado}",
+                        state="complete"
+                    )
+
+                # Guardar en session_state para no re-escanear en cada rerun
+                st.session_state["bc_datos"]        = datos_bc
+                st.session_state["bc_codigo"]       = codigo
+                st.session_state["bc_fuente"]       = fuente_datos
+                st.session_state["bc_imagen_nueva"] = False
+
+            else:
+                # Recuperar datos del session_state
+                datos_bc          = st.session_state["bc_datos"]
+                codigo            = st.session_state["bc_codigo"]
+                fuente_datos      = st.session_state["bc_fuente"]
                 nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
                 marca_encontrada  = datos_bc.get("_marca", "")
                 nutriscore        = datos_bc.get("_nutriscore", "")
                 imagen_url        = datos_bc.get("_imagen_url", "")
-
-                status.update(
-                    label=f"Producto encontrado: {nombre_encontrado}",
-                    state="complete"
-                )
 
             # Mostrar tarjeta del producto encontrado
             col_img, col_info = st.columns([1, 2])
