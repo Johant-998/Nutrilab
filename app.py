@@ -494,28 +494,42 @@ def barcode_consultar_api(codigo: str) -> dict:
     # Open Food Facts guarda valores por 100g (_100g) y por porcion (_serving)
     # Preferimos por porcion si existe, sino usamos por 100g
 
-    def get_nutriente(clave_serving, clave_100g, factor=1.0):
-        """Obtiene valor por porcion o calcula desde por 100g."""
-        val = nutriments.get(clave_serving)
-        if val is None:
-            val_100g = nutriments.get(clave_100g)
-            if val_100g is not None:
-                val = val_100g * (porcion_num / 100)
-        if val is None:
-            return None
-        return round(float(val) * factor, 2)
+    def get_nutriente(*claves, factor=1.0):
+        """
+        Busca el valor del nutriente probando multiples claves.
+        Primero por porcion (_serving), luego por 100g calculando proporcion.
+        Cubre variantes de nomenclatura de productos latinoamericanos.
+        """
+        for clave in claves:
+            val = nutriments.get(clave)
+            if val is not None:
+                if "_100g" in clave and porcion_num != 100:
+                    val = float(val) * (porcion_num / 100)
+                return round(float(val) * factor, 2)
+        return None
 
     datos = {
-        "nombre_producto":  f"{nombre_prod} — {marca}".strip(" —") or "Producto escaneado",
-        "porcion_g":        porcion_num,
-        "calorias":         get_nutriente("energy-kcal_serving",       "energy-kcal_100g"),
-        "grasas_totales":   get_nutriente("fat_serving",               "fat_100g"),
-        "grasas_saturadas": get_nutriente("saturated-fat_serving",     "saturated-fat_100g"),
-        "sodio":            get_nutriente("sodium_serving",            "sodium_100g", 1000),
-        "carbohidratos":    get_nutriente("carbohydrates_serving",     "carbohydrates_100g"),
-        "azucares":         get_nutriente("sugars_serving",            "sugars_100g"),
-        "proteinas":        get_nutriente("proteins_serving",          "proteins_100g"),
-        "fibra":            get_nutriente("fiber_serving",             "fiber_100g"),
+        "nombre_producto": (
+            f"{nombre_prod} — {marca}".strip(" —") or "Producto escaneado"
+        ),
+        "porcion_g":  porcion_num,
+        "calorias":   get_nutriente(
+            "energy-kcal_serving", "energy-kcal_100g",
+            "energy_kcal_serving", "energy_kcal_100g",
+        ),
+        "grasas_totales":   get_nutriente("fat_serving",           "fat_100g"),
+        "grasas_saturadas": get_nutriente(
+            "saturated-fat_serving", "saturated-fat_100g",
+            "saturated_fat_serving", "saturated_fat_100g",
+        ),
+        "sodio":        get_nutriente("sodium_serving",        "sodium_100g",        factor=1000),
+        "carbohidratos":get_nutriente("carbohydrates_serving", "carbohydrates_100g",
+                                      "carbohydrate_serving",  "carbohydrate_100g"),
+        "azucares":     get_nutriente("sugars_serving",  "sugars_100g"),
+        "proteinas":    get_nutriente("proteins_serving", "proteins_100g",
+                                      "protein_serving",  "protein_100g"),
+        "fibra":        get_nutriente("fiber_serving",   "fiber_100g",
+                                      "fibers_serving",  "fibers_100g"),
         # Metadata extra para mostrar en la UI
         "_codigo":          codigo,
         "_marca":           marca,
@@ -968,6 +982,65 @@ with st.spinner("Analizando nutrientes..."):
             # Limpiar metadata antes de analizar
             datos_limpios = {k: v for k, v in datos_bc.items()
                              if not k.startswith("_")}
+
+            # ── Detectar nutrientes faltantes ─────────────────────────────────
+            CAMPOS_REQUERIDOS = {
+                "calorias": "Calorias (kcal)",
+                "grasas_totales": "Grasas totales (g)",
+                "grasas_saturadas": "Grasas saturadas (g)",
+                "sodio": "Sodio (mg)",
+                "carbohidratos": "Carbohidratos (g)",
+                "azucares": "Azucares (g)",
+                "proteinas": "Proteinas (g)",
+                "fibra": "Fibra (g)",
+            }
+            LIMITES = {
+                "calorias": (0.0, 2000.0, 1.0),
+                "grasas_totales": (0.0, 200.0, 0.1),
+                "grasas_saturadas": (0.0, 100.0, 0.1),
+                "sodio": (0.0, 5000.0, 1.0),
+                "carbohidratos": (0.0, 500.0, 0.1),
+                "azucares": (0.0, 300.0, 0.1),
+                "proteinas": (0.0, 100.0, 0.1),
+                "fibra": (0.0, 100.0, 0.1),
+            }
+
+            faltantes = [c for c in CAMPOS_REQUERIDOS if c not in datos_limpios
+                         or datos_limpios.get(c) is None]
+            encontrados = len(CAMPOS_REQUERIDOS) - len(faltantes)
+
+            if faltantes:
+                st.warning(
+                    f"**{encontrados} de 8 nutrientes encontrados** en la base de datos. "
+                    "Open Food Facts tiene el producto registrado pero sin informacion "
+                    f"nutricional completa. Complete los {len(faltantes)} campos faltantes:"
+                )
+
+                with st.form("form_completar_bc"):
+                    st.markdown("#### Completar nutrientes faltantes")
+                    cols = st.columns(2)
+                    valores_extra = {}
+                    for i, campo in enumerate(faltantes):
+                        etiqueta = CAMPOS_REQUERIDOS[campo]
+                        mn, mx, step = LIMITES[campo]
+                        with cols[i % 2]:
+                            valores_extra[campo] = st.number_input(
+                                etiqueta, min_value=mn, max_value=mx,
+                                value=0.0, step=step, key=f"bc_{campo}"
+                            )
+                    completar = st.form_submit_button(
+                        "Continuar con el analisis",
+                        use_container_width=True
+                    )
+
+                if not completar:
+                    st.stop()
+
+                # Combinar datos de la API con los ingresados manualmente
+                datos_limpios.update({
+                    k: v for k, v in valores_extra.items() if v > 0
+                })
+
             resultado = analizar_nutrientes(datos_limpios)
 
         except ValueError as e:
