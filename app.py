@@ -24,6 +24,37 @@ import numpy as np
 import streamlit as st
 from fpdf import FPDF
 
+# Importacion condicional de Supabase
+SUPABASE_DISPONIBLE = False
+SUPABASE_ERROR      = ""
+_sb_client          = None
+
+try:
+    from supabase import create_client, Client as SupabaseClient
+
+    _SUPA_URL = ""
+    _SUPA_KEY = ""
+
+    if hasattr(st, "secrets"):
+        _SUPA_URL = st.secrets.get("SUPABASE_URL", "")
+        _SUPA_KEY = (
+            st.secrets.get("SUPABASE_KEY", "") or
+            st.secrets.get("SUPABASE_ANON_KEY", "")
+        )
+
+    if not _SUPA_URL:
+        SUPABASE_ERROR = "SUPABASE_URL no encontrada en Secrets"
+    elif not _SUPA_KEY:
+        SUPABASE_ERROR = "SUPABASE_KEY no encontrada en Secrets"
+    else:
+        _sb_client = create_client(_SUPA_URL, _SUPA_KEY)
+        SUPABASE_DISPONIBLE = True
+
+except ImportError:
+    SUPABASE_ERROR = "Libreria supabase no instalada — verifique requirements.txt"
+except Exception as e:
+    SUPABASE_ERROR = f"Error de conexion: {e}"
+
 # Importacion condicional del lector de codigo de barras
 BARCODE_DISPONIBLE = False
 BARCODE_ERROR      = ""
@@ -545,6 +576,101 @@ def barcode_consultar_api(codigo: str) -> dict:
     return datos
 
 # =============================================================================
+# MODULO BASE DE DATOS LOCAL — SUPABASE
+# =============================================================================
+
+CAMPOS_NUTRIENTES = [
+    "calorias", "grasas_totales", "grasas_saturadas",
+    "sodio", "carbohidratos", "azucares", "proteinas", "fibra",
+]
+
+
+def db_buscar_producto(codigo: str) -> dict | None:
+    """
+    Busca un producto en la base de datos NutriLab por codigo de barras.
+
+    Retorna:
+        dict con los datos del producto, o None si no existe.
+    """
+    if not SUPABASE_DISPONIBLE or not _sb_client:
+        return None
+    try:
+        resp = (
+            _sb_client.table("productos")
+            .select("*")
+            .eq("codigo_barras", codigo)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            return resp.data[0]
+        return None
+    except Exception:
+        return None
+
+
+def db_guardar_producto(datos: dict, codigo: str, contribuidor: str = "anonimo") -> bool:
+    """
+    Guarda o actualiza un producto en la base de datos NutriLab.
+    Si el codigo ya existe, actualiza los nutrientes (upsert).
+
+    Parametros:
+        datos (dict):        Datos nutricionales del producto.
+        codigo (str):        Codigo de barras EAN/UPC.
+        contribuidor (str):  Nombre o alias del usuario que contribuye.
+
+    Retorna:
+        bool: True si se guardo correctamente, False si hubo error.
+    """
+    if not SUPABASE_DISPONIBLE or not _sb_client:
+        return False
+    try:
+        registro = {
+            "codigo_barras":    codigo,
+            "nombre_producto":  datos.get("nombre_producto", "Producto sin nombre"),
+            "marca":            datos.get("_marca", ""),
+            "pais":             datos.get("_pais", "Colombia"),
+            "porcion_g":        datos.get("porcion_g"),
+            "contribuidor":     contribuidor,
+            "actualizado_en":   datetime.utcnow().isoformat(),
+        }
+        # Agregar solo los nutrientes que tienen valor
+        for campo in CAMPOS_NUTRIENTES:
+            val = datos.get(campo)
+            if val is not None:
+                registro[campo] = float(val)
+
+        # Upsert: inserta si no existe, actualiza si ya existe
+        _sb_client.table("productos").upsert(
+            registro,
+            on_conflict="codigo_barras"
+        ).execute()
+        return True
+
+    except Exception as e:
+        return False
+
+
+def db_estadisticas() -> dict:
+    """
+    Retorna estadisticas generales de la base de datos NutriLab.
+    Usado para mostrar el contador de contribuciones en la UI.
+    """
+    if not SUPABASE_DISPONIBLE or not _sb_client:
+        return {"total": 0, "verificados": 0}
+    try:
+        total = _sb_client.table("productos").select(
+            "*", count="exact"
+        ).execute().count or 0
+        verif = _sb_client.table("productos").select(
+            "*", count="exact"
+        ).eq("verificado", True).execute().count or 0
+        return {"total": total, "verificados": verif}
+    except Exception:
+        return {"total": 0, "verificados": 0}
+
+
+# =============================================================================
 # INTERFAZ STREAMLIT
 # =============================================================================
 
@@ -886,8 +1012,34 @@ with st.sidebar:
 
 
 # ─── Area principal ───────────────────────────────────────────────────────────
-st.markdown("# NutriLab")
-st.markdown("**Analizador de Etiquetas Nutricionales** - Resolucion 810/2021 - Min. Salud Colombia")
+col_titulo, col_stats = st.columns([3, 1])
+with col_titulo:
+    st.markdown("# NutriLab")
+    st.markdown("**Analizador de Etiquetas Nutricionales** - Resolucion 810/2021 - Min. Salud Colombia")
+with col_stats:
+    if SUPABASE_DISPONIBLE:
+        stats = db_estadisticas()
+        st.markdown(
+            f"<div style='background:#1a2535;border-radius:10px;padding:12px;"
+            f"text-align:center;border:1px solid #2c3e50'>"
+            f"<div style='color:#2ecc71;font-size:1.6rem;font-weight:800'>"
+            f"{stats['total']}</div>"
+            f"<div style='color:#8fa8bf;font-size:0.72rem'>productos en</div>"
+            f"<div style='color:#e6edf3;font-size:0.78rem;font-weight:600'>"
+            f"NutriLab DB</div></div>",
+            unsafe_allow_html=True
+        )
+    else:
+        with st.expander("BD no conectada", expanded=False):
+            st.error(f"**Supabase no conectado**")
+            st.code(SUPABASE_ERROR or "Error desconocido")
+            st.markdown(
+                "**Verifique en Streamlit Secrets:**\n"
+                "```toml\n"
+                "SUPABASE_URL = \"https://xxx.supabase.co\"\n"
+                "SUPABASE_KEY = \"sb_publishable_...\"\n"
+                "```"
+            )
 
 # Panel de diagnostico Barcode (visible solo cuando falla)
 if not BARCODE_DISPONIBLE:
@@ -943,11 +1095,41 @@ with st.spinner("Analizando nutrientes..."):
                 codigo, tipo_bc = barcode_leer_imagen(imagen_bytes_bc)
                 st.write(f"Codigo detectado: **{codigo}** ({tipo_bc})")
 
-                # Paso 2: consultar Open Food Facts
-                st.write("Consultando base de datos Open Food Facts...")
-                datos_bc = barcode_consultar_api(codigo)
+                # Paso 2: buscar primero en base de datos NutriLab
+                datos_bc      = None
+                fuente_datos  = ""
 
-                # Paso 3: extraer metadata para mostrar
+                if SUPABASE_DISPONIBLE:
+                    st.write("Buscando en base de datos NutriLab...")
+                    registro_local = db_buscar_producto(codigo)
+                    if registro_local:
+                        # Convertir registro Supabase al formato esperado
+                        datos_bc = {k: registro_local.get(k)
+                                    for k in ["nombre_producto","porcion_g"] + CAMPOS_NUTRIENTES
+                                    if registro_local.get(k) is not None}
+                        datos_bc["_marca"]      = registro_local.get("marca", "")
+                        datos_bc["_pais"]       = registro_local.get("pais", "")
+                        datos_bc["_imagen_url"] = ""
+                        datos_bc["_nutriscore"] = ""
+                        fuente_datos = "nutrilab"
+                        st.write(f"Encontrado en NutriLab: **{datos_bc['nombre_producto']}**")
+
+                # Paso 3: si no está en NutriLab, consultar Open Food Facts
+                if datos_bc is None:
+                    st.write("Consultando Open Food Facts...")
+                    try:
+                        datos_bc     = barcode_consultar_api(codigo)
+                        fuente_datos = "openfoodfacts"
+                    except ValueError:
+                        # No existe en ninguna BD — crear entrada vacia
+                        datos_bc = {
+                            "nombre_producto": f"Producto {codigo}",
+                            "_marca": "", "_pais": "Colombia",
+                            "_imagen_url": "", "_nutriscore": "",
+                        }
+                        fuente_datos = "nuevo"
+
+                # Paso 4: extraer metadata para mostrar
                 nombre_encontrado = datos_bc.get("nombre_producto", "Desconocido")
                 marca_encontrada  = datos_bc.get("_marca", "")
                 nutriscore        = datos_bc.get("_nutriscore", "")
@@ -963,10 +1145,41 @@ with st.spinner("Analizando nutrientes..."):
             with col_img:
                 if imagen_url:
                     st.image(imagen_url, width=120)
+                else:
+                    st.markdown(
+                        "<div style='background:#1a2535;border-radius:10px;"
+                        "height:80px;display:flex;align-items:center;"
+                        "justify-content:center;font-size:2rem'>📦</div>",
+                        unsafe_allow_html=True
+                    )
             with col_info:
                 st.markdown(f"**{nombre_encontrado}**")
                 if marca_encontrada:
                     st.caption(f"Marca: {marca_encontrada}")
+
+                # Badge de fuente de datos
+                if fuente_datos == "nutrilab":
+                    st.markdown(
+                        "<span style='background:#2ecc71;color:white;padding:2px 10px;"
+                        "border-radius:6px;font-size:0.75rem;font-weight:700'>"
+                        "NutriLab DB</span>",
+                        unsafe_allow_html=True
+                    )
+                elif fuente_datos == "openfoodfacts":
+                    st.markdown(
+                        "<span style='background:#3498db;color:white;padding:2px 10px;"
+                        "border-radius:6px;font-size:0.75rem;font-weight:700'>"
+                        "Open Food Facts</span>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        "<span style='background:#e67e22;color:white;padding:2px 10px;"
+                        "border-radius:6px;font-size:0.75rem;font-weight:700'>"
+                        "Nuevo producto</span>",
+                        unsafe_allow_html=True
+                    )
+
                 if nutriscore:
                     colores_ns = {"A":"#2ecc71","B":"#82c341","C":"#f9c74f",
                                   "D":"#f39c12","E":"#e74c3c"}
@@ -1010,14 +1223,30 @@ with st.spinner("Analizando nutrientes..."):
             encontrados = len(CAMPOS_REQUERIDOS) - len(faltantes)
 
             if faltantes:
-                st.warning(
-                    f"**{encontrados} de 8 nutrientes encontrados** en la base de datos. "
-                    "Open Food Facts tiene el producto registrado pero sin informacion "
-                    f"nutricional completa. Complete los {len(faltantes)} campos faltantes:"
-                )
+                if fuente_datos == "nuevo":
+                    st.warning(
+                        f"Producto **{nombre_encontrado}** no encontrado en ninguna base "
+                        f"de datos. Ingrese los {len(faltantes)} valores nutricionales "
+                        "y contribuya al banco de datos NutriLab:"
+                    )
+                else:
+                    st.warning(
+                        f"**{encontrados} de 8 nutrientes encontrados.** "
+                        f"Complete los {len(faltantes)} campos faltantes:"
+                    )
 
                 with st.form("form_completar_bc"):
                     st.markdown("#### Completar nutrientes faltantes")
+
+                    # Campo de nombre si es producto nuevo
+                    nombre_editado = nombre_encontrado
+                    if fuente_datos == "nuevo":
+                        nombre_editado = st.text_input(
+                            "Nombre del producto",
+                            value=nombre_encontrado,
+                            key="bc_nombre"
+                        )
+
                     cols = st.columns(2)
                     valores_extra = {}
                     for i, campo in enumerate(faltantes):
@@ -1028,18 +1257,57 @@ with st.spinner("Analizando nutrientes..."):
                                 etiqueta, min_value=mn, max_value=mx,
                                 value=0.0, step=step, key=f"bc_{campo}"
                             )
+
+                    # Campo de contribuidor
+                    st.divider()
+                    contribuidor = st.text_input(
+                        "Tu nombre o alias (opcional)",
+                        placeholder="Ej: Johan — aparecera en la contribucion",
+                        key="bc_contribuidor"
+                    )
+                    guardar_bd = st.checkbox(
+                        "Guardar en la base de datos NutriLab para ayudar a otros usuarios",
+                        value=True,
+                        disabled=not SUPABASE_DISPONIBLE,
+                        help="Los datos se guardan de forma anonima y ayudan a "
+                             "otros usuarios que escaneen el mismo producto.",
+                        key="bc_guardar"
+                    )
+                    if not SUPABASE_DISPONIBLE:
+                        st.caption("Base de datos no disponible — configure Supabase Secrets.")
+
                     completar = st.form_submit_button(
-                        "Continuar con el analisis",
+                        "Analizar y guardar",
                         use_container_width=True
                     )
 
                 if not completar:
                     st.stop()
 
+                # Actualizar nombre si fue editado
+                if fuente_datos == "nuevo":
+                    datos_limpios["nombre_producto"] = nombre_editado or nombre_encontrado
+
                 # Combinar datos de la API con los ingresados manualmente
                 datos_limpios.update({
                     k: v for k, v in valores_extra.items() if v > 0
                 })
+
+                # Guardar en Supabase si el usuario lo autorizó
+                if guardar_bd and SUPABASE_DISPONIBLE:
+                    datos_para_guardar = {**datos_bc, **datos_limpios}
+                    exito = db_guardar_producto(
+                        datos_para_guardar,
+                        codigo,
+                        contribuidor.strip() or "anonimo"
+                    )
+                    if exito:
+                        st.success(
+                            f"Gracias por contribuir al banco de datos NutriLab. "
+                            f"Este producto ya estara disponible para otros usuarios."
+                        )
+                    else:
+                        st.warning("No se pudo guardar en la base de datos.")
 
             resultado = analizar_nutrientes(datos_limpios)
 
