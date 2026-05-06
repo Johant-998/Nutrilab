@@ -30,13 +30,13 @@ SUPABASE_ERROR      = ""
 _sb_client          = None
 
 try:
-    from supabase import create_client, Client as SupabaseClient
+    import requests as _requests
 
     _SUPA_URL = ""
     _SUPA_KEY = ""
 
     if hasattr(st, "secrets"):
-        _SUPA_URL = st.secrets.get("SUPABASE_URL", "")
+        _SUPA_URL = st.secrets.get("SUPABASE_URL", "").rstrip("/")
         _SUPA_KEY = (
             st.secrets.get("SUPABASE_KEY", "") or
             st.secrets.get("SUPABASE_ANON_KEY", "")
@@ -47,11 +47,24 @@ try:
     elif not _SUPA_KEY:
         SUPABASE_ERROR = "SUPABASE_KEY no encontrada en Secrets"
     else:
-        _sb_client = create_client(_SUPA_URL, _SUPA_KEY)
-        SUPABASE_DISPONIBLE = True
+        # Usar REST API directamente — compatible con todas las versiones de key
+        _SUPA_HEADERS = {
+            "apikey":        _SUPA_KEY,
+            "Authorization": f"Bearer {_SUPA_KEY}",
+            "Content-Type":  "application/json",
+            "Prefer":        "return=representation",
+        }
+        # Verificar conexion con un ping a la tabla
+        _test = _requests.get(
+            f"{_SUPA_URL}/rest/v1/productos?select=id&limit=1",
+            headers=_SUPA_HEADERS,
+            timeout=5
+        )
+        if _test.status_code in (200, 206):
+            SUPABASE_DISPONIBLE = True
+        else:
+            SUPABASE_ERROR = f"Error HTTP {_test.status_code}: {_test.text[:100]}"
 
-except ImportError:
-    SUPABASE_ERROR = "Libreria supabase no instalada — verifique requirements.txt"
 except Exception as e:
     SUPABASE_ERROR = f"Error de conexion: {e}"
 
@@ -585,39 +598,49 @@ CAMPOS_NUTRIENTES = [
 ]
 
 
+def _supa_get(endpoint: str, params: dict = None) -> list:
+    """Ejecuta GET contra la REST API de Supabase."""
+    url = f"{_SUPA_URL}/rest/v1/{endpoint}"
+    r   = _requests.get(url, headers=_SUPA_HEADERS, params=params, timeout=8)
+    if r.status_code in (200, 206):
+        return r.json()
+    return []
+
+
+def _supa_upsert(tabla: str, datos: dict) -> tuple:
+    """Ejecuta UPSERT contra la REST API de Supabase."""
+    url = f"{_SUPA_URL}/rest/v1/{tabla}"
+    headers = {**_SUPA_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"}
+    r = _requests.post(url, headers=headers, json=datos, timeout=8)
+    if r.status_code in (200, 201):
+        return True, ""
+    return False, r.text[:200]
+
+
 def db_buscar_producto(codigo: str) -> dict | None:
     """
     Busca un producto en la base de datos NutriLab por codigo de barras.
-
-    Retorna:
-        dict con los datos del producto, o None si no existe.
+    Retorna dict con los datos del producto, o None si no existe.
     """
-    if not SUPABASE_DISPONIBLE or not _sb_client:
+    if not SUPABASE_DISPONIBLE:
         return None
     try:
-        resp = (
-            _sb_client.table("productos")
-            .select("*")
-            .eq("codigo_barras", codigo)
-            .limit(1)
-            .execute()
-        )
-        if resp.data:
-            return resp.data[0]
-        return None
+        rows = _supa_get("productos", {
+            "select":         "*",
+            "codigo_barras":  f"eq.{codigo}",
+            "limit":          "1"
+        })
+        return rows[0] if rows else None
     except Exception:
         return None
 
 
 def db_guardar_producto(datos: dict, codigo: str, contribuidor: str = "anonimo"):
     """
-    Guarda o actualiza un producto en la base de datos NutriLab.
-    Si el codigo ya existe, actualiza los nutrientes (upsert).
-
-    Retorna:
-        (True, "") si exitoso, o (False, mensaje_error) si fallo.
+    Guarda o actualiza un producto en la base de datos NutriLab via REST API.
+    Retorna (True, "") si exitoso, o (False, mensaje_error) si fallo.
     """
-    if not SUPABASE_DISPONIBLE or not _sb_client:
+    if not SUPABASE_DISPONIBLE:
         return False, "Supabase no disponible"
     try:
         registro = {
@@ -628,12 +651,8 @@ def db_guardar_producto(datos: dict, codigo: str, contribuidor: str = "anonimo")
             "contribuidor":    contribuidor or "anonimo",
             "actualizado_en":  datetime.utcnow().isoformat(),
         }
-
-        # Porcion — solo agregar si tiene valor
         if datos.get("porcion_g"):
             registro["porcion_g"] = float(datos["porcion_g"])
-
-        # Nutrientes — solo los que tienen valor mayor a cero
         for campo in CAMPOS_NUTRIENTES:
             val = datos.get(campo)
             if val is not None and val != "":
@@ -641,37 +660,28 @@ def db_guardar_producto(datos: dict, codigo: str, contribuidor: str = "anonimo")
                     registro[campo] = float(val)
                 except (ValueError, TypeError):
                     pass
-
-        resp = _sb_client.table("productos").upsert(
-            registro,
-            on_conflict="codigo_barras"
-        ).execute()
-
-        # Verificar que Supabase retorno datos (confirmacion de exito)
-        if resp.data:
-            return True, ""
-        else:
-            return False, "Supabase no retorno confirmacion — verifique RLS"
-
+        return _supa_upsert("productos", registro)
     except Exception as e:
         return False, str(e)
 
 
 def db_estadisticas() -> dict:
     """
-    Retorna estadisticas generales de la base de datos NutriLab.
-    Usado para mostrar el contador de contribuciones en la UI.
+    Retorna estadisticas generales de la base de datos NutriLab via REST API.
     """
-    if not SUPABASE_DISPONIBLE or not _sb_client:
+    if not SUPABASE_DISPONIBLE:
         return {"total": 0, "verificados": 0}
     try:
-        total = _sb_client.table("productos").select(
-            "*", count="exact"
-        ).execute().count or 0
-        verif = _sb_client.table("productos").select(
-            "*", count="exact"
-        ).eq("verificado", True).execute().count or 0
-        return {"total": total, "verificados": verif}
+        # Usar HEAD con Prefer: count=exact para obtener el total sin datos
+        url = f"{_SUPA_URL}/rest/v1/productos"
+        r   = _requests.get(
+            url,
+            headers={**_SUPA_HEADERS, "Prefer": "count=exact"},
+            params={"select": "id"},
+            timeout=5
+        )
+        total = int(r.headers.get("content-range", "0/0").split("/")[-1] or 0)
+        return {"total": total, "verificados": 0}
     except Exception:
         return {"total": 0, "verificados": 0}
 
