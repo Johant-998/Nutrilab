@@ -755,6 +755,41 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# JS para forzar contraste en el archivo cargado del file uploader
+st.components.v1.html("""
+<script>
+function fixUploaderContrast() {
+    const sidebar = document.querySelector('[data-testid="stSidebar"]');
+    if (!sidebar) return;
+
+    // Buscar todos los items de archivos cargados
+    const fileItems = sidebar.querySelectorAll(
+        '[data-testid="stFileUploader"] ul li, ' +
+        '[data-testid="stFileUploader"] [class*="uploadedFile"]'
+    );
+
+    fileItems.forEach(item => {
+        item.style.backgroundColor = "#1e3a52";
+        item.style.borderRadius = "8px";
+        item.style.border = "1px solid #3d5a73";
+        item.style.padding = "6px 8px";
+        item.style.marginTop = "6px";
+
+        // Forzar color en todos los textos hijos
+        item.querySelectorAll("span, p, small, div").forEach(el => {
+            el.style.color = "#ffffff";
+            el.style.opacity = "1";
+        });
+    });
+}
+
+// Ejecutar al cargar y observar cambios en el DOM
+fixUploaderContrast();
+const observer = new MutationObserver(fixUploaderContrast);
+observer.observe(document.body, { childList: true, subtree: true });
+</script>
+""", height=0)
+
 st.markdown("""
 <style>
     /* ── Sidebar base ── */
@@ -1010,6 +1045,25 @@ st.markdown("""
     /* ── Ocultar borde inferior de tabs en sidebar ── */
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
         padding-top: 12px !important;
+    }
+
+    /* ── Archivo cargado — selector universal de respaldo ── */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] ul li {
+        background-color: #1e3a52 !important;
+        border-radius: 8px !important;
+        border: 1px solid #3d5a73 !important;
+        padding: 6px 8px !important;
+        margin-top: 6px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] ul li * {
+        color: #ffffff !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] ul li small,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] ul li span {
+        color: #c8dcea !important;
+        opacity: 1 !important;
+        font-weight: 500 !important;
     }
 
     /* ── Respaldo global: fuerza visibilidad en todos los spans del sidebar ── */
