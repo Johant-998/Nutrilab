@@ -908,15 +908,33 @@ st.markdown("""
     }
 
     /* ── Alertas en area principal ── */
-    .alerta-rojo     { background:#fdecea; border-left:4px solid #e74c3c;
-                       padding:10px 14px; border-radius:8px; margin:4px 0;
-                       font-size:0.9rem; }
-    .alerta-amarillo { background:#fef9e7; border-left:4px solid #f39c12;
-                       padding:10px 14px; border-radius:8px; margin:4px 0;
-                       font-size:0.9rem; }
-    .alerta-verde    { background:#eafaf1; border-left:4px solid #2ecc71;
-                       padding:10px 14px; border-radius:8px; margin:4px 0;
-                       font-size:0.9rem; }
+    .alerta-rojo {
+        background: #3d1a1a !important;
+        border-left: 4px solid #e74c3c !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
+        margin: 4px 0 !important;
+        font-size: 0.9rem !important;
+        color: #f5c6c6 !important;
+    }
+    .alerta-amarillo {
+        background: #3d2e0a !important;
+        border-left: 4px solid #f39c12 !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
+        margin: 4px 0 !important;
+        font-size: 0.9rem !important;
+        color: #f5dfa0 !important;
+    }
+    .alerta-verde {
+        background: #0d2e1a !important;
+        border-left: 4px solid #2ecc71 !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
+        margin: 4px 0 !important;
+        font-size: 0.9rem !important;
+        color: #a8f0c6 !important;
+    }
 
     /* ── Ocultar borde inferior de tabs en sidebar ── */
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
@@ -1535,10 +1553,22 @@ st.divider()
 st.markdown("### Alertas nutricionales")
 for alerta in alertas:
     al = alerta.lower()
-    clase = ("alerta-rojo"     if "alto" in al or "evitar" in al else
-             "alerta-amarillo" if "bajo" in al or "posible" in al else
-             "alerta-verde")
-    st.markdown(f'<div class="{clase}">{alerta}</div>', unsafe_allow_html=True)
+    if "alto" in al or "evitar" in al:
+        bg, borde, color = "#3d1a1a", "#e74c3c", "#f5c6c6"
+        icono = "⚠️"
+    elif "bajo" in al or "posible" in al:
+        bg, borde, color = "#3d2e0a", "#f39c12", "#f5dfa0"
+        icono = "ℹ️"
+    else:
+        bg, borde, color = "#0d2e1a", "#2ecc71", "#a8f0c6"
+        icono = "✅"
+    st.markdown(
+        f'''<div style="background:{bg};border-left:4px solid {borde};
+        padding:10px 14px;border-radius:8px;margin:4px 0;
+        font-size:0.9rem;color:{color};line-height:1.5">
+        {icono} {alerta}</div>''',
+        unsafe_allow_html=True
+    )
 
 st.divider()
 
