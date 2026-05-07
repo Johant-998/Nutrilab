@@ -292,7 +292,40 @@ class ReporteNutricional(FPDF):
 
 
 def _limpiar(texto: str) -> str:
-    """Elimina emojis y caracteres no-ASCII para compatibilidad con Helvetica."""
+    """
+    Reemplaza caracteres especiales por equivalentes ASCII
+    para compatibilidad con la fuente Helvetica de fpdf2.
+    """
+    if not texto:
+        return ""
+    # Reemplazar caracteres Unicode comunes por equivalentes ASCII
+    reemplazos = {
+        "—": "-",   # em dash —
+        "–": "-",   # en dash –
+        "‘": "'",   # comilla izquierda
+        "’": "'",   # comilla derecha
+        "“": '"',   # comilla doble izquierda
+        "”": '"',   # comilla doble derecha
+        "…": "...", # puntos suspensivos
+        "é": "e",   # é
+        "á": "a",   # á
+        "í": "i",   # í
+        "ó": "o",   # ó
+        "ú": "u",   # ú
+        "ñ": "n",   # ñ
+        "É": "E",   # É
+        "Á": "A",   # Á
+        "Í": "I",   # Í
+        "Ó": "O",   # Ó
+        "Ú": "U",   # Ú
+        "Ñ": "N",   # Ñ
+        "ü": "u",   # ü
+        "à": "a",   # à
+        "è": "e",   # è
+    }
+    for char, reemplazo in reemplazos.items():
+        texto = texto.replace(char, reemplazo)
+    # Eliminar cualquier otro caracter no-ASCII restante
     return texto.encode("ascii", errors="ignore").decode("ascii").strip()
 
 
@@ -308,7 +341,7 @@ def _titulo_seccion(pdf, titulo: str):
 
 def generar_pdf_bytes(resultado: dict, ruta_grafica: str = None) -> bytes:
     """Genera el PDF en memoria y retorna los bytes listos para descarga."""
-    nombre  = resultado["nombre_producto"]
+    nombre  = _limpiar(resultado["nombre_producto"])
     pct     = resultado["porcentajes"]
     sem     = resultado["semaforo"]
     datos   = resultado["datos_originales"]
@@ -990,6 +1023,7 @@ with st.sidebar:
                                   key="porcion_manual")
 
         st.markdown("**Valores nutricionales**")
+        st.caption(f"Todos los valores son **por porcion** ({porcion:.0f} g/ml)")
         calorias         = st.number_input("Calorias (kcal)",      0.0, 2000.0, 0.0, 1.0)
         grasas_totales   = st.number_input("Grasas totales (g)",   0.0,  200.0, 0.0, 0.1)
         grasas_saturadas = st.number_input("Grasas saturadas (g)", 0.0,  100.0, 0.0, 0.1)
@@ -1333,6 +1367,12 @@ else:
             # Formulario con claves ss_ que persisten en session_state
             with st.form("form_completar_bc", clear_on_submit=False):
                 st.markdown("#### Completar nutrientes faltantes")
+                _porcion_bc = (datos_limpios.get("porcion_g") or
+                               datos_bc.get("porcion_g") or 100)
+                st.info(
+                    f"Ingrese los valores **por porcion** ({_porcion_bc:.0f} g/ml) "
+                    "tal como aparecen en la etiqueta del producto."
+                )
 
                 if fuente_datos == "nuevo":
                     st.text_input("Nombre del producto",
@@ -1462,7 +1502,14 @@ COLOR_MPL     = {"VERDE": "#2ecc71", "AMARILLO": "#f39c12", "ROJO": "#e74c3c"}
 col_tabla, col_graf = st.columns([1, 1.4], gap="large")
 
 with col_tabla:
-    st.markdown("### Semaforo nutricional")
+    porcion_mostrar = resultado["datos_originales"].get("porcion_g", 0)
+    if porcion_mostrar and porcion_mostrar > 0:
+        st.markdown(f"### Semaforo nutricional  "
+                    f"<span style='font-size:0.75rem;color:#8fa8bf;font-weight:400'>"
+                    f"valores por porcion ({porcion_mostrar:.0f} g/ml)</span>",
+                    unsafe_allow_html=True)
+    else:
+        st.markdown("### Semaforo nutricional")
     filas = ""
     for clave, (etiqueta, unidad) in ETIQUETAS_UI.items():
         if clave not in porcentajes:
@@ -1498,7 +1545,9 @@ with col_tabla:
     </table>""", unsafe_allow_html=True)
 
 with col_graf:
-    st.markdown("### Porcentajes VRD")
+    porcion_graf = resultado["datos_originales"].get("porcion_g", 0)
+    etiqueta_porcion = f" (por porcion {porcion_graf:.0f} g/ml)" if porcion_graf else ""
+    st.markdown(f"### Porcentajes VRD{etiqueta_porcion}")
     etiq_g, vals_g, cols_g = [], [], []
     for clave, (etiqueta, _) in ETIQUETAS_UI.items():
         if clave in porcentajes:
@@ -1596,7 +1645,8 @@ plt.close(fig2)
 try:
     pdf_bytes = generar_pdf_bytes(resultado, ruta_tmp_png)
     nombre_safe = (_limpiar(nombre_producto)[:30]
-                   .replace(" ", "_").replace("/", "_"))
+                   .replace(" ", "_").replace("/", "_")
+                   .replace("-", "_"))
     st.download_button(
         label               = "Descargar reporte PDF",
         data                = pdf_bytes,
