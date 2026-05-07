@@ -510,16 +510,29 @@ def barcode_consultar_api(codigo: str) -> dict:
     """
     url = OFF_API_URL.format(codigo=codigo)
 
-    try:
-        respuesta = requests.get(url, headers=OFF_HEADERS, timeout=10)
-        respuesta.raise_for_status()
-        data = respuesta.json()
-    except requests.exceptions.ConnectionError:
-        raise ConnectionError("Sin conexion a internet. Verifique su red.")
-    except requests.exceptions.Timeout:
-        raise ConnectionError("La API tardo demasiado. Intente de nuevo.")
-    except Exception as e:
-        raise ConnectionError(f"Error de conexion: {e}")
+    # Reintentar hasta 3 veces con timeout creciente
+    _ultimo_error = ""
+    for _intento, _timeout in enumerate([12, 20, 30], start=1):
+        try:
+            respuesta = requests.get(
+                url, headers=OFF_HEADERS,
+                timeout=_timeout
+            )
+            respuesta.raise_for_status()
+            data = respuesta.json()
+            break  # exito — salir del loop
+        except requests.exceptions.Timeout:
+            _ultimo_error = f"Timeout en intento {_intento} ({_timeout}s)"
+            if _intento == 3:
+                raise ConnectionError(
+                    "Open Food Facts no respondio en 30 segundos. "
+                    "Ingrese los datos manualmente."
+                )
+            continue
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError("Sin conexion a internet.")
+        except Exception as e:
+            raise ConnectionError(f"Error de conexion: {e}")
 
     # Verificar si el producto existe en la base de datos
     if data.get("status") != 1:
@@ -1172,7 +1185,8 @@ else:
                     try:
                         datos_bc     = barcode_consultar_api(codigo)
                         fuente_datos = "openfoodfacts"
-                    except ValueError:
+                    except (ValueError, ConnectionError):
+                        # No encontrado o timeout — crear entrada nueva
                         datos_bc = {
                             "nombre_producto": f"Producto {codigo}",
                             "_marca": "", "_pais": "Colombia",
