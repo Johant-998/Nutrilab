@@ -894,9 +894,47 @@ st.markdown("""
 
     /* Nombre del archivo una vez cargado */
     [data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"],
-    [data-testid="stSidebar"] [data-testid="stFileUploader"] li span {
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] li span,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] li,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] li p,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] span,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] p,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="fileName"],
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="fileSize"] {
         color: #ffffff !important;
         font-weight: 600 !important;
+        opacity: 1 !important;
+    }
+
+    /* Contenedor del archivo cargado */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"],
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] li {
+        background-color: #1e3a52 !important;
+        border-radius: 8px !important;
+        padding: 6px 10px !important;
+        border: 1px solid #3d5a73 !important;
+        margin-top: 6px !important;
+    }
+
+    /* Icono de previa del archivo */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="uploadedFile"] img,
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="fileIcon"] {
+        opacity: 1 !important;
+        border-radius: 4px !important;
+    }
+
+    /* Boton X para eliminar archivo */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [class*="deleteBtn"],
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button[title="Delete file"] {
+        color: #e74c3c !important;
+        opacity: 1 !important;
+        background: transparent !important;
+        border: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] button[title="Delete file"]:hover {
+        color: #ffffff !important;
+        background: #e74c3c !important;
+        border-radius: 4px !important;
     }
 
     /* ── Previa de imagen subida ── */
