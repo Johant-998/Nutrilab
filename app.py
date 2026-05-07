@@ -47,26 +47,38 @@ try:
     elif not _SUPA_KEY:
         SUPABASE_ERROR = "SUPABASE_KEY no encontrada en Secrets"
     else:
-        # Usar REST API directamente — compatible con todas las versiones de key
+        _project_ref = _SUPA_URL.replace("https://", "").split(".")[0]
+        _REST_BASE   = f"https://{_project_ref}.supabase.co/rest/v1"
+
+        # Headers con Accept-Profile para forzar schema public
         _SUPA_HEADERS = {
-            "apikey":        _SUPA_KEY,
-            "Authorization": f"Bearer {_SUPA_KEY}",
-            "Content-Type":  "application/json",
-            "Prefer":        "return=representation",
+            "apikey":         _SUPA_KEY,
+            "Authorization":  f"Bearer {_SUPA_KEY}",
+            "Content-Type":   "application/json",
+            "Accept-Profile": "public",
+            "Content-Profile":"public",
         }
-        # Verificar conexion con un ping a la tabla
+
+        # Probar conexion con la tabla
         _test = _requests.get(
-            f"{_SUPA_URL}/rest/v1/productos?select=id&limit=1",
+            f"{_REST_BASE}/productos?select=id&limit=1",
             headers=_SUPA_HEADERS,
-            timeout=5
+            timeout=8
         )
+
         if _test.status_code in (200, 206):
             SUPABASE_DISPONIBLE = True
         else:
-            SUPABASE_ERROR = f"Error HTTP {_test.status_code}: {_test.text[:100]}"
+            # Mostrar respuesta completa para diagnostico
+            SUPABASE_ERROR = (
+                f"HTTP {_test.status_code} en {_REST_BASE}/productos — "
+                f"{_test.text[:150]}"
+            )
 
 except Exception as e:
     SUPABASE_ERROR = f"Error de conexion: {e}"
+
+_REST_BASE = _REST_BASE if SUPABASE_DISPONIBLE else ""
 
 # Importacion condicional del lector de codigo de barras
 BARCODE_DISPONIBLE = False
@@ -600,7 +612,7 @@ CAMPOS_NUTRIENTES = [
 
 def _supa_get(endpoint: str, params: dict = None) -> list:
     """Ejecuta GET contra la REST API de Supabase."""
-    url = f"{_SUPA_URL}/rest/v1/{endpoint}"
+    url = f"{_REST_BASE}/{endpoint}"
     r   = _requests.get(url, headers=_SUPA_HEADERS, params=params, timeout=8)
     if r.status_code in (200, 206):
         return r.json()
@@ -609,12 +621,12 @@ def _supa_get(endpoint: str, params: dict = None) -> list:
 
 def _supa_upsert(tabla: str, datos: dict) -> tuple:
     """Ejecuta UPSERT contra la REST API de Supabase."""
-    url = f"{_SUPA_URL}/rest/v1/{tabla}"
+    url     = f"{_REST_BASE}/{tabla}"
     headers = {**_SUPA_HEADERS, "Prefer": "resolution=merge-duplicates,return=representation"}
     r = _requests.post(url, headers=headers, json=datos, timeout=8)
     if r.status_code in (200, 201):
         return True, ""
-    return False, r.text[:200]
+    return False, f"HTTP {r.status_code}: {r.text[:200]}"
 
 
 def db_buscar_producto(codigo: str) -> dict | None:
@@ -673,7 +685,7 @@ def db_estadisticas() -> dict:
         return {"total": 0, "verificados": 0}
     try:
         # Usar HEAD con Prefer: count=exact para obtener el total sin datos
-        url = f"{_SUPA_URL}/rest/v1/productos"
+        url = f"{_REST_BASE}/productos"
         r   = _requests.get(
             url,
             headers={**_SUPA_HEADERS, "Prefer": "count=exact"},
@@ -1053,13 +1065,20 @@ with col_stats:
         )
     else:
         with st.expander("BD no conectada", expanded=False):
-            st.error(f"**Supabase no conectado**")
+            st.error("**Supabase no conectado**")
             st.code(SUPABASE_ERROR or "Error desconocido")
+            _project_ref_diag = _SUPA_URL.replace("https://","").split(".")[0] if _SUPA_URL else "???"
+            st.markdown("**URLs probadas:**")
+            for _u in [
+                f"{_SUPA_URL}/rest/v1/productos",
+                f"https://{_project_ref_diag}.supabase.co/rest/v1/productos",
+            ]:
+                st.code(_u)
             st.markdown(
                 "**Verifique en Streamlit Secrets:**\n"
                 "```toml\n"
-                "SUPABASE_URL = \"https://xxx.supabase.co\"\n"
-                "SUPABASE_KEY = \"sb_publishable_...\"\n"
+                "SUPABASE_URL = \"https://ukvzayirmznuxclbfoaf.supabase.co\"\n"
+                "SUPABASE_KEY = \"eyJ...\"\n"
                 "```"
             )
 
